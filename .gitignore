@@ -141,3 +141,19 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Manually added
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Prisma
+prisma/migrations/dev.db
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
