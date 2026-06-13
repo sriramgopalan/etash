@@ -2,6 +2,7 @@
   "ignorePatterns": [
     "*.cjs",
     "*.mjs",
+    ".lighthouserc.js",
     ".next/",
     "coverage/",
     "playwright-report/",
