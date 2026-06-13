@@ -157,3 +157,14 @@ prisma/migrations/dev.db
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Playwright
+playwright-report/
+test-results/
+
+# Vitest
+coverage/
+
+# TypeScript
+next-env.d.ts
