@@ -7,9 +7,93 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
 model User {
+  id               String    @id @default(cuid())
+  email            String    @unique // PII: primary identifier
+  emailVerified    DateTime?
+  name             String? // PII: display name, synced from OAuth on first login only
+  image            String? // PII: avatar URL, synced from OAuth on first login only
+  passwordHash     String? // null for OAuth-only accounts
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships OrganizationMember[]
+
+  @@index([email])
+  @@index([lockedUntil])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String // "google" | "github" | "credentials"
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
+}
+
+// Shared token table for magic links (type="MAGIC_LINK") and
+// email verification (type="EMAIL_VERIFICATION"). identifier = email address.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  type       String   @default("MAGIC_LINK")
+  createdAt  DateTime @default(now())
+
+  @@unique([identifier, token])
+  @@index([type])
+}
+
+model Organization {
   id        String   @id @default(cuid())
-  email     String   @unique
+  name      String
+  plan      Plan     @default(FREE)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  members OrganizationMember[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String // "OWNER" | "ADMIN" | "MEMBER"
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
 }
