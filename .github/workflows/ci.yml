@@ -187,6 +187,7 @@ jobs:
         env:
           # Prisma generate needs a value; no DB is actually reached at build time
           DATABASE_URL: postgresql://localhost/placeholder
+          NEXT_TELEMETRY_DISABLED: 1
       - name: Run Lighthouse CI
         run: npx lhci autorun
         env:
