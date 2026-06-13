@@ -163,6 +163,9 @@ Thumbs.db
 playwright-report/
 test-results/
 
+# Lighthouse CI
+.lighthouseci/
+
 # Vitest
 coverage/
 
