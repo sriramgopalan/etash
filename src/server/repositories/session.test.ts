@@ -1,23 +1,19 @@
 
-import type { PrismaClient } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeepMockProxy } from "vitest-mock-extended";
-import { mockReset } from "vitest-mock-extended";
+
+import { makeRedisMock } from "@/tests/helpers/auth-setup";
+import {
+  createPrismaMock,
+  mockReset,
+  type DeepMockProxy,
+  type PrismaClient,
+} from "@/tests/helpers/repository-setup";
 
 let prismaMock: DeepMockProxy<PrismaClient>;
-
-const redisMock = {
-  get: vi.fn<() => Promise<string | null>>(),
-  set: vi.fn<() => Promise<string>>(),
-  del: vi.fn<() => Promise<number>>(),
-  sadd: vi.fn<() => Promise<number>>(),
-  srem: vi.fn<() => Promise<number>>(),
-  smembers: vi.fn<() => Promise<string[]>>(),
-};
+const redisMock = makeRedisMock();
 
 vi.mock("@/server/db", async () => {
-  const { mockDeep } = await import("vitest-mock-extended");
-  prismaMock = mockDeep<PrismaClient>();
+  prismaMock = await createPrismaMock();
   return { prisma: prismaMock };
 });
 

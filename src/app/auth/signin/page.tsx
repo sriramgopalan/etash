@@ -4,6 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Suspense, useState } from "react";
 
+import { EmailPasswordFields, OAuthButtons } from "@/components/auth/OAuthButtons";
+
 function SignInForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
@@ -34,23 +36,11 @@ function SignInForm() {
     <main>
       <h1>Sign in</h1>
       <form onSubmit={handleCredentials}>
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
+        <EmailPasswordFields
+          email={email}
+          password={password}
+          onEmail={setEmail}
+          onPassword={setPassword}
         />
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={loading}>
@@ -58,18 +48,7 @@ function SignInForm() {
         </button>
       </form>
       <hr />
-      <button
-        type="button"
-        onClick={() => void signIn("google", { callbackUrl })}
-      >
-        Sign in with Google
-      </button>
-      <button
-        type="button"
-        onClick={() => void signIn("github", { callbackUrl })}
-      >
-        Sign in with GitHub
-      </button>
+      <OAuthButtons callbackUrl={callbackUrl} />
       <p>
         <a href={`/auth/signin?mode=magic&callbackUrl=${encodeURIComponent(callbackUrl)}`}>
           Sign in with magic link

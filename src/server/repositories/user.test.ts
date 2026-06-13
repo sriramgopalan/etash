@@ -1,8 +1,11 @@
 
-import type { PrismaClient } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeepMockProxy } from "vitest-mock-extended";
-import { mockReset } from "vitest-mock-extended";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  mockReset,
+  type DeepMockProxy,
+  type PrismaClient,
+} from "@/tests/helpers/repository-setup";
 
 let prismaMock: DeepMockProxy<PrismaClient>;
 
@@ -35,7 +38,7 @@ const SAFE_USER = {
 };
 
 describe("user repository", () => {
-  beforeEach(() => {
+  afterEach(() => {
     mockReset(prismaMock);
   });
 

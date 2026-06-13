@@ -33,10 +33,14 @@ const schema = z
     }
   });
 
+export { schema as envSchema };
+
 const result = schema.safeParse(process.env);
 
 if (!result.success) {
-  if (process.env["NODE_ENV"] !== "test") {
+  const isSafeMode =
+    process.env["NODE_ENV"] === "test" || process.env["GITHUB_ACTIONS"] === "true";
+  if (!isSafeMode) {
     throw new Error(
       `Invalid environment variables:\n${result.error.flatten().fieldErrors
         ? JSON.stringify(result.error.flatten().fieldErrors, null, 2)

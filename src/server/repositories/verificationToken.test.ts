@@ -1,14 +1,17 @@
 
-import type { PrismaClient } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DeepMockProxy } from "vitest-mock-extended";
-import { mockReset } from "vitest-mock-extended";
+
+import {
+  createPrismaMock,
+  mockReset,
+  type DeepMockProxy,
+  type PrismaClient,
+} from "@/tests/helpers/repository-setup";
 
 let prismaMock: DeepMockProxy<PrismaClient>;
 
 vi.mock("@/server/db", async () => {
-  const { mockDeep } = await import("vitest-mock-extended");
-  prismaMock = mockDeep<PrismaClient>();
+  prismaMock = await createPrismaMock();
   return { prisma: prismaMock };
 });
 
@@ -23,6 +26,27 @@ const {
 
 const FUTURE = new Date(Date.now() + 60_000);
 const PAST = new Date(Date.now() - 60_000);
+
+type TokenType = (typeof TOKEN_TYPES)[keyof typeof TOKEN_TYPES];
+
+function mockTokenRecord(opts: { expires: Date; type?: TokenType }) {
+  prismaMock.verificationToken.findUnique.mockResolvedValue({
+    identifier: "user@example.com",
+    token: "tok",
+    expires: opts.expires,
+    type: opts.type ?? TOKEN_TYPES.MAGIC_LINK,
+    createdAt: new Date(),
+  } as never);
+  prismaMock.verificationToken.delete.mockResolvedValue({} as never);
+}
+
+async function callFindAndConsume(token = "tok", type: TokenType = TOKEN_TYPES.MAGIC_LINK) {
+  return findAndConsumeVerificationToken({ identifier: "user@example.com", token, type });
+}
+
+async function callLookup(token = "tok", type: TokenType = TOKEN_TYPES.MAGIC_LINK) {
+  return lookupVerificationToken({ identifier: "user@example.com", token, type });
+}
 
 describe("verificationToken repository", () => {
   beforeEach(() => {
@@ -58,7 +82,7 @@ describe("verificationToken repository", () => {
       const storedToken = createCall?.[0]?.data?.token as string;
       expect(storedToken).not.toBe(rawToken);
       expect(storedToken).toBe(hashToken(rawToken));
-      expect(storedToken).toHaveLength(64); // SHA-256 hex
+      expect(storedToken).toHaveLength(64);
     });
 
     it("deletes old tokens of same type before creating", async () => {
@@ -88,74 +112,29 @@ describe("verificationToken repository", () => {
 
   describe("findAndConsumeVerificationToken", () => {
     it("returns valid=true and deletes valid token", async () => {
-      prismaMock.verificationToken.findUnique.mockResolvedValue({
-        identifier: "user@example.com",
-        token: "tok",
-        expires: FUTURE,
-        type: TOKEN_TYPES.MAGIC_LINK,
-        createdAt: new Date(),
-      } as never);
-      prismaMock.verificationToken.delete.mockResolvedValue({} as never);
-
-      const result = await findAndConsumeVerificationToken({
-        identifier: "user@example.com",
-        token: "tok",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      mockTokenRecord({ expires: FUTURE });
+      const result = await callFindAndConsume();
       expect(result).toEqual({ valid: true, expired: false });
       expect(prismaMock.verificationToken.delete).toHaveBeenCalled();
     });
 
     it("returns expired=true and deletes expired token", async () => {
-      prismaMock.verificationToken.findUnique.mockResolvedValue({
-        identifier: "user@example.com",
-        token: "tok",
-        expires: PAST,
-        type: TOKEN_TYPES.MAGIC_LINK,
-        createdAt: new Date(),
-      } as never);
-      prismaMock.verificationToken.delete.mockResolvedValue({} as never);
-
-      const result = await findAndConsumeVerificationToken({
-        identifier: "user@example.com",
-        token: "tok",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      mockTokenRecord({ expires: PAST });
+      const result = await callFindAndConsume();
       expect(result).toEqual({ valid: false, expired: true });
       expect(prismaMock.verificationToken.delete).toHaveBeenCalled();
     });
 
     it("returns valid=false when not found", async () => {
       prismaMock.verificationToken.findUnique.mockResolvedValue(null);
-
-      const result = await findAndConsumeVerificationToken({
-        identifier: "user@example.com",
-        token: "bad",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      const result = await callFindAndConsume("bad");
       expect(result).toEqual({ valid: false, expired: false });
       expect(prismaMock.verificationToken.delete).not.toHaveBeenCalled();
     });
 
     it("returns valid=false when type mismatch", async () => {
-      prismaMock.verificationToken.findUnique.mockResolvedValue({
-        identifier: "user@example.com",
-        token: "tok",
-        expires: FUTURE,
-        type: TOKEN_TYPES.EMAIL_VERIFICATION,
-        createdAt: new Date(),
-      } as never);
-      prismaMock.verificationToken.delete.mockResolvedValue({} as never);
-
-      const result = await findAndConsumeVerificationToken({
-        identifier: "user@example.com",
-        token: "tok",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      mockTokenRecord({ expires: FUTURE, type: TOKEN_TYPES.EMAIL_VERIFICATION });
+      const result = await callFindAndConsume();
       expect(result).toEqual({ valid: false, expired: false });
     });
   });
@@ -166,13 +145,7 @@ describe("verificationToken repository", () => {
         expires: FUTURE,
         type: TOKEN_TYPES.MAGIC_LINK,
       } as never);
-
-      const result = await lookupVerificationToken({
-        identifier: "user@example.com",
-        token: "tok",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      const result = await callLookup();
       expect(result).toEqual({ exists: true, expired: false });
     });
 
@@ -181,14 +154,17 @@ describe("verificationToken repository", () => {
         expires: PAST,
         type: TOKEN_TYPES.MAGIC_LINK,
       } as never);
-
-      const result = await lookupVerificationToken({
-        identifier: "user@example.com",
-        token: "tok",
-        type: TOKEN_TYPES.MAGIC_LINK,
-      });
-
+      const result = await callLookup();
       expect(result).toEqual({ exists: true, expired: true });
+    });
+
+    it("returns exists=false when type mismatch", async () => {
+      prismaMock.verificationToken.findUnique.mockResolvedValue({
+        expires: FUTURE,
+        type: TOKEN_TYPES.EMAIL_VERIFICATION,
+      } as never);
+      const result = await callLookup("tok", TOKEN_TYPES.MAGIC_LINK);
+      expect(result).toEqual({ exists: false, expired: false });
     });
   });
 });

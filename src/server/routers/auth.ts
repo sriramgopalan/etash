@@ -2,11 +2,11 @@ import { hash, verify } from "@node-rs/argon2";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { issueEmailVerification } from "@/lib/auth-helpers";
 import {
   sendAccountDeletedEmail,
   sendMagicLinkEmail,
   sendPasswordChangedEmail,
-  sendVerificationEmail,
 } from "@/lib/email";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
@@ -183,22 +183,7 @@ export const authRouter = createTRPCRouter({
 
       await rateLimit(`auth:email:${email}`, { max: 5, windowSeconds: 600 });
 
-      const token = generateToken();
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-      await createVerificationToken({
-        identifier: email,
-        token,
-        expiresAt,
-        type: TOKEN_TYPES.EMAIL_VERIFICATION,
-      });
-
-      const baseUrl = env.AUTH_URL ?? "http://localhost:3000";
-      const verifyUrl = `${baseUrl}/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
-
-      sendVerificationEmail(email, verifyUrl).catch((err: unknown) => {
-        logger.error({ err, userId: ctx.session.user.id }, "verification email failed");
-      });
+      await issueEmailVerification(email, ctx.session.user.id);
 
       return { sent: true as const };
     }),

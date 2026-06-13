@@ -3,6 +3,8 @@
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 
+import { EmailPasswordFields } from "@/components/auth/OAuthButtons";
+
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,24 +49,13 @@ export default function RegisterPage() {
     <main>
       <h1>Create account</h1>
       <form onSubmit={handleSubmit}>
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={12}
+        <EmailPasswordFields
+          email={email}
+          password={password}
+          onEmail={setEmail}
+          onPassword={setPassword}
+          autoCompletePassword="new-password"
+          minLengthPassword={12}
         />
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={loading}>

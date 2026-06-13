@@ -11,3 +11,7 @@ paths = ['''docker-compose\.ya?ml$''']
 [[allowlists]]
 description = ".env.example lists variable names with intentionally empty values"
 paths = ['''\.env\.example$''']
+
+[[allowlists]]
+description = ".env.test contains CI/test placeholder values only — not real credentials"
+paths = ['''\.env\.test$''']

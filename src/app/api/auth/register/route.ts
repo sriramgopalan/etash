@@ -2,17 +2,11 @@ import { hash } from "@node-rs/argon2";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { sendVerificationEmail } from "@/lib/email";
-import { env } from "@/lib/env";
+import { issueEmailVerification } from "@/lib/auth-helpers";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { createUser, getUserByEmail } from "@/server/repositories/user";
-import {
-  TOKEN_TYPES,
-  createVerificationToken,
-  generateToken,
-} from "@/server/repositories/verificationToken";
 
 const registerSchema = z
   .object({
@@ -60,22 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const passwordHash = await hash(password);
     const user = await createUser({ email, passwordHash });
 
-    const token = generateToken();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-    await createVerificationToken({
-      identifier: email,
-      token,
-      expiresAt,
-      type: TOKEN_TYPES.EMAIL_VERIFICATION,
-    });
-
-    const baseUrl = env.AUTH_URL ?? "http://localhost:3000";
-    const verifyUrl = `${baseUrl}/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
-
-    // L2: individual fire-and-forget per email type so each failure is identifiable.
-    sendVerificationEmail(email, verifyUrl).catch((err: unknown) => {
-      logger.error({ err, userId: user.id, emailType: "verification" }, "registration email failed");
-    });
+    await issueEmailVerification(email, user.id);
 
     logger.info({ ip, userId: user.id }, "user registered");
     return NextResponse.json({ userId: user.id }, { status: 201 });
