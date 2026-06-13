@@ -1,4 +1,10 @@
 {
+  "ignorePatterns": [
+    "*.cjs",
+    "*.mjs",
+    ".next/",
+    "node_modules/"
+  ],
   "extends": [
     "next/core-web-vitals",
     "plugin:@typescript-eslint/strict",
