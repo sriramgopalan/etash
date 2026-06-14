@@ -195,6 +195,28 @@ describe("board repository", () => {
       const call = prismaMock.board.findMany.mock.calls[0][0] as { where: { OR?: unknown[] } };
       expect(call.where.OR).toBeDefined();
     });
+
+    it("orders by name when orderBy is 'name'", async () => {
+      prismaMock.board.findMany.mockResolvedValue([]);
+      prismaMock.board.count.mockResolvedValue(0);
+      await listBoards({ orderBy: "name", order: "asc" });
+      expect(prismaMock.board.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ name: "asc" }, { position: "asc" }],
+        }),
+      );
+    });
+
+    it("orders by position/createdAt when orderBy is 'postCount'", async () => {
+      prismaMock.board.findMany.mockResolvedValue([]);
+      prismaMock.board.count.mockResolvedValue(0);
+      await listBoards({ orderBy: "postCount" });
+      expect(prismaMock.board.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ position: "asc" }, { createdAt: "desc" }],
+        }),
+      );
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -290,6 +312,32 @@ describe("board repository", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             settingsJson: expect.objectContaining({ guestVotingEnabled: true }),
+          }),
+        }),
+      );
+    });
+
+    it("updates description, visibility, and position", async () => {
+      prismaMock.board.update.mockResolvedValue({
+        ...BASE_ROW,
+        description: "New desc",
+        isPublic: false,
+        isListed: false,
+        position: 3,
+      } as never);
+      await updateBoard("board-1", {
+        description: "New desc",
+        isPublic: false,
+        isListed: false,
+        position: 3,
+      });
+      expect(prismaMock.board.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            description: "New desc",
+            isPublic: false,
+            isListed: false,
+            position: 3,
           }),
         }),
       );

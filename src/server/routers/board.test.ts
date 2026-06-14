@@ -125,6 +125,24 @@ describe("boardRouter", () => {
         caller.create({ name: "Test", slug: "my-board", isPublic: false, isListed: false }),
       ).rejects.toMatchObject({ code: "CONFLICT" });
     });
+
+    it("falls back to suffixed slug when base slug is taken", async () => {
+      // First checkSlugAvailable call: base slug taken; second: candidate available
+      prismaMock.board.findUnique
+        .mockResolvedValueOnce({ id: "other-board" } as never)
+        .mockResolvedValueOnce(null);
+      prismaMock.board.aggregate.mockResolvedValue({ _max: { position: 0 } } as never);
+      prismaMock.$transaction.mockImplementation(
+        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
+      );
+      prismaMock.board.create.mockResolvedValue({
+        ...BASE_BOARD_ROW,
+        slug: "my-board-abcd",
+      } as never);
+      const caller = createCaller(createAdminContext("admin-1"));
+      const result = await caller.create({ name: "My Board", isPublic: false, isListed: false });
+      expect(result.slug).toContain("my-board");
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -154,6 +172,14 @@ describe("boardRouter", () => {
       const result = await caller.getBySlug({ slug: "my-board" });
       expect(result).toHaveProperty("ownerId");
       expect(result).toHaveProperty("_count");
+    });
+
+    it("throws NOT_FOUND for admin when board does not exist", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(null);
+      const caller = createCaller(createAdminContext("admin-1"));
+      await expect(caller.getBySlug({ slug: "missing-board" })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
     });
 
     it("normalises slug to lowercase", async () => {
