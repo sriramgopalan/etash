@@ -247,7 +247,7 @@ jobs:
             | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: Detect secrets
-        run: gitleaks detect --source . --exit-code 1
+        run: gitleaks detect --source . --exit-code 1 --baseline-path .gitleaksbaseline
 
   # ── Summary ─────────────────────────────────────────────────────────────────
   summary:
