@@ -5,6 +5,7 @@ import Google from "next-auth/providers/google";
 import { env } from "@/lib/env";
 
 export const { auth } = NextAuth({
+  secret: env.AUTH_SECRET,
   providers: [
     Google({
       clientId: env.GOOGLE_CLIENT_ID,
