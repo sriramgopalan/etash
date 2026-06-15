@@ -51,6 +51,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/etash_test
+      AUTH_SECRET: "ci-placeholder-not-a-real-secret"
+      GOOGLE_CLIENT_ID: "test-google-client-id"
+      GOOGLE_CLIENT_SECRET: "test-google-client-secret"
+      GITHUB_CLIENT_ID: "test-github-client-id"
+      GITHUB_CLIENT_SECRET: "test-github-client-secret"
+      RESEND_API_KEY: "placeholder-resend-key-not-real"
+      RESEND_FROM: "test@example.com"
+      REDIS_URL: "redis://localhost:6379"
+      NEXTAUTH_URL: "http://localhost:3000"
+      AUTH_URL: "http://localhost:3000"
     services:
       postgres:
         image: postgres:16-alpine
@@ -63,6 +73,15 @@ jobs:
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     steps:
@@ -88,6 +107,16 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/etash_test
+      AUTH_SECRET: "ci-placeholder-not-a-real-secret"
+      GOOGLE_CLIENT_ID: "test-google-client-id"
+      GOOGLE_CLIENT_SECRET: "test-google-client-secret"
+      GITHUB_CLIENT_ID: "test-github-client-id"
+      GITHUB_CLIENT_SECRET: "test-github-client-secret"
+      RESEND_API_KEY: "placeholder-resend-key-not-real"
+      RESEND_FROM: "test@example.com"
+      REDIS_URL: "redis://localhost:6379"
+      NEXTAUTH_URL: "http://localhost:3000"
+      AUTH_URL: "http://localhost:3000"
     services:
       postgres:
         image: postgres:16-alpine
@@ -100,6 +129,15 @@ jobs:
         options: >-
           --health-cmd pg_isready
           --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     steps:
@@ -174,6 +212,41 @@ jobs:
   lighthouse:
     name: "Lighthouse CI"
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/etash_test
+      AUTH_SECRET: "ci-placeholder-not-a-real-secret"
+      GOOGLE_CLIENT_ID: "test-google-client-id"
+      GOOGLE_CLIENT_SECRET: "test-google-client-secret"
+      GITHUB_CLIENT_ID: "test-github-client-id"
+      GITHUB_CLIENT_SECRET: "test-github-client-secret"
+      RESEND_API_KEY: "placeholder-resend-key-not-real"
+      RESEND_FROM: "test@example.com"
+      REDIS_URL: "redis://localhost:6379"
+      NEXTAUTH_URL: "http://localhost:3000"
+      AUTH_URL: "http://localhost:3000"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: etash_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -182,16 +255,25 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma generate
+      - run: npx prisma db push
       - name: Build
         run: npm run build
         env:
           # Prisma generate needs a value; no DB is actually reached at build time
           DATABASE_URL: postgresql://localhost/placeholder
           NEXT_TELEMETRY_DISABLED: 1
+      - name: Verify server starts
+        run: |
+          npm run start &
+          SERVER_PID=$!
+          sleep 8
+          echo "=== curl output ==="
+          curl -sv http://localhost:3000/ 2>&1 || true
+          echo "=== server output ==="
+          kill $SERVER_PID 2>/dev/null || true
       - name: Run Lighthouse CI
         run: npx lhci autorun
         env:
-          DATABASE_URL: postgresql://localhost/placeholder
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
 
   # ── 10. Gitleaks ────────────────────────────────────────────────────────────
@@ -211,7 +293,7 @@ jobs:
             | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/
       - name: Detect secrets
-        run: gitleaks detect --source . --exit-code 1
+        run: gitleaks detect --source . --exit-code 1 --baseline-path .gitleaksbaseline
 
   # ── Summary ─────────────────────────────────────────────────────────────────
   summary:

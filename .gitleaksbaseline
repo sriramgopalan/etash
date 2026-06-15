@@ -1,0 +1,42 @@
+[
+ {
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 91,
+  "EndLine": 91,
+  "StartColumn": 7,
+  "EndColumn": 67,
+  "Match": "AUTH_SECRET: \"test-secret-at-least-32-characters-long-for-ci\"",
+  "Secret": "test-secret-at-least-32-characters-long-for-ci",
+  "File": ".github/workflows/ci.yml",
+  "SymlinkFile": "",
+  "Commit": "1d0e4bec74e437872f655e208424143aded0a3de",
+  "Entropy": 3.6296616,
+  "Author": "Sriram Gopalan",
+  "Email": "sriramgopalan@gmail.com",
+  "Date": "2026-06-14T04:24:37Z",
+  "Message": "fix(ci): add required env vars to Playwright and Lighthouse jobs\n\nBoth jobs start the app server (next dev / next start respectively),\nso env.ts runs full validation — not the build-phase shortcut.\nThe old GITHUB_ACTIONS bypass was removed when validation was made\nlazy, so each job now supplies test-safe placeholder values for\nAUTH_SECRET, OAuth credentials, RESEND, and REDIS_URL.\n\nFor Lighthouse, the step-level DATABASE_URL placeholders still\noverride the job-level value for the Build and lhci autorun steps.\n\nCo-Authored-By: Claude Sonnet 4.6 \u003cnoreply@anthropic.com\u003e",
+  "Tags": [],
+  "RuleID": "generic-api-key",
+  "Fingerprint": "1d0e4bec74e437872f655e208424143aded0a3de:.github/workflows/ci.yml:generic-api-key:91"
+ },
+ {
+  "Description": "Detected a Generic API Key, potentially exposing access to various services and sensitive operations.",
+  "StartLine": 189,
+  "EndLine": 189,
+  "StartColumn": 8,
+  "EndColumn": 68,
+  "Match": "AUTH_SECRET: \"test-secret-at-least-32-characters-long-for-ci\"",
+  "Secret": "test-secret-at-least-32-characters-long-for-ci",
+  "File": ".github/workflows/ci.yml",
+  "SymlinkFile": "",
+  "Commit": "1d0e4bec74e437872f655e208424143aded0a3de",
+  "Entropy": 3.6296616,
+  "Author": "Sriram Gopalan",
+  "Email": "sriramgopalan@gmail.com",
+  "Date": "2026-06-14T04:24:37Z",
+  "Message": "fix(ci): add required env vars to Playwright and Lighthouse jobs\n\nBoth jobs start the app server (next dev / next start respectively),\nso env.ts runs full validation — not the build-phase shortcut.\nThe old GITHUB_ACTIONS bypass was removed when validation was made\nlazy, so each job now supplies test-safe placeholder values for\nAUTH_SECRET, OAuth credentials, RESEND, and REDIS_URL.\n\nFor Lighthouse, the step-level DATABASE_URL placeholders still\noverride the job-level value for the Build and lhci autorun steps.\n\nCo-Authored-By: Claude Sonnet 4.6 \u003cnoreply@anthropic.com\u003e",
+  "Tags": [],
+  "RuleID": "generic-api-key",
+  "Fingerprint": "1d0e4bec74e437872f655e208424143aded0a3de:.github/workflows/ci.yml:generic-api-key:189"
+ }
+]
