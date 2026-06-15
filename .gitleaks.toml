@@ -18,4 +18,4 @@ paths = ['''\.env\.test$''']
 
 [[allowlists]]
 description = "CI workflow placeholder values — not real credentials"
-paths = ['''.github/workflows/ci\.yml$''']
+paths = ['''\.github/workflows/ci\.yml$''']
