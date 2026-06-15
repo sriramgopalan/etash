@@ -5,7 +5,7 @@ import { defineConfig } from "vitest/config";
 
 // Populate process.env before any worker spawns so env.ts validation passes.
 // process.loadEnvFile is available in Node.js ≥ 20.12 (project requires Node 20).
-process.loadEnvFile(".env.test");
+try { process.loadEnvFile(".env.test"); } catch {}
 
 export default defineConfig({
   plugins: [react()],
