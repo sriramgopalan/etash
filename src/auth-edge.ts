@@ -1,33 +1,34 @@
+import { hkdf } from "@panva/hkdf";
 import { jwtDecrypt } from "jose";
 
-async function getDerivedKey(secret: string): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HKDF" },
-    false,
-    ["deriveBits"],
+// Cookie name matches NextAuth's defaultCookies() — must match the salt used during encoding.
+const COOKIE_NAME =
+  process.env["NODE_ENV"] === "production"
+    ? "__Secure-authjs.session-token"
+    : "authjs.session-token";
+
+async function getDerivedEncryptionKey(secret: string): Promise<Uint8Array> {
+  return hkdf(
+    "sha256",
+    secret,
+    COOKIE_NAME,
+    `Auth.js Generated Encryption Key (${COOKIE_NAME})`,
+    64,
   );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: encoder.encode(""),
-      info: encoder.encode("Auth.js Generated Encryption Key"),
-    },
-    keyMaterial,
-    512,
-  );
-  return new Uint8Array(bits);
 }
 
 export async function getSessionFromJWT(
   token: string,
 ): Promise<{ id: string; role: string; email: string } | null> {
   try {
-    const derivedKey = await getDerivedKey(process.env["AUTH_SECRET"] ?? "");
-    const { payload } = await jwtDecrypt(token, derivedKey);
+    const encryptionKey = await getDerivedEncryptionKey(
+      process.env["AUTH_SECRET"] ?? "",
+    );
+    const { payload } = await jwtDecrypt(token, encryptionKey, {
+      clockTolerance: 15,
+      keyManagementAlgorithms: ["dir"],
+      contentEncryptionAlgorithms: ["A256CBC-HS512", "A256GCM"],
+    });
     console.log("[auth-edge] JWT payload:", JSON.stringify(payload));
     return {
       id: (payload.sub ?? payload.id ?? "") as string,
