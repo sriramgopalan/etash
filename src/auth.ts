@@ -23,9 +23,9 @@ const LOCKOUT_MINUTES = 15;
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: {
-    strategy: "database",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 15, // re-validate every 15 minutes
+    strategy: "jwt",
+    maxAge: 60 * 60 * 24 * 30,
+    updateAge: 60 * 15,
   },
   cookies: {
     sessionToken: {
@@ -84,6 +84,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    jwt: async ({ token, user }) => {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      return token;
+    },
+    session: async ({ session, token }) => {
+      if (session.user && token) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as string;
+      }
+      return session;
+    },
     signIn: async ({ user, account }) => {
       if (!account || account.type === "credentials") return true;
 
@@ -101,13 +115,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       return true;
-    },
-    session: async ({ session, user }) => {
-      if (session.user && user) {
-        session.user.id = user.id;
-        session.user.role = user.role;
-      }
-      return session;
     },
   },
   events: {
