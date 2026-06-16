@@ -1,5 +1,7 @@
 "use client";
 
+import { Switch } from "@/components/ui/Switch";
+
 interface Props {
   isPublic: boolean;
   isListed: boolean;
@@ -18,29 +20,34 @@ export function VisibilityFieldset({
   listedLabel = "Listed on board index",
 }: Props) {
   return (
-    <fieldset>
-      <legend>Visibility</legend>
-      <label>
-        <input
-          type="checkbox"
+    <fieldset className="space-y-4">
+      <legend className="mb-1 text-sm font-medium text-gray-700">Visibility</legend>
+
+      <div className="flex items-center justify-between gap-4">
+        <span id="board-public-label" className="text-sm text-gray-700">
+          {publicLabel}
+        </span>
+        <Switch
           checked={isPublic}
-          onChange={(e) => {
-            const checked = e.target.checked;
+          aria-labelledby="board-public-label"
+          onCheckedChange={(checked) => {
             onPublicChange(checked);
             if (!checked) onListedChange(false);
           }}
         />
-        {publicLabel}
-      </label>
-      <label>
-        <input
-          type="checkbox"
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <span id="board-listed-label" className="text-sm text-gray-700">
+          {listedLabel}
+        </span>
+        <Switch
           checked={isListed}
           disabled={!isPublic}
-          onChange={(e) => onListedChange(e.target.checked)}
+          aria-labelledby="board-listed-label"
+          onCheckedChange={onListedChange}
         />
-        {listedLabel}
-      </label>
+      </div>
     </fieldset>
   );
 }
