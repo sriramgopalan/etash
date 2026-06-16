@@ -414,7 +414,7 @@ z.object({ id: z.string() })
 1. **Public view:** returns all posts with `status != PENDING` on a public board. `PENDING` posts are excluded unless the caller is an admin or the post's author.
 2. **Admin view:** returns all posts including `PENDING` ones.
 3. Pinned posts always appear first within any sort order, regardless of sort field or direction. Among non-pinned posts, the selected sort applies.
-4. Supported sort fields: `voteCount DESC` (default), `createdAt DESC`, `createdAt ASC`, `status`.
+4. Supported sort fields: `voteCount DESC` (default), `createdAt DESC`, `createdAt ASC`, `status` (sorts ascending, with `createdAt DESC` then `postNumber ASC` as tiebreakers — same tiebreaker chain as the other sort fields).
 5. Status filter: caller may request one or more statuses. Default (no filter): all non-`PENDING` statuses.
 6. Pagination: cursor-based (using `createdAt` + `id` as cursor) — posts can accumulate rapidly; offset pagination degrades under load.
 7. A board with no posts returns an empty `items` array (not an error).
@@ -579,6 +579,58 @@ z.object({
   id:       string,
   isPinned: boolean,
   pinnedAt: string | null,
+}
+```
+
+---
+
+### 3.8 Vote on a Post
+
+#### User Story
+> As a user, I want to upvote a post I support so that the most popular feedback rises to the top.
+
+#### Acceptance Criteria
+
+1. Authenticated users can toggle their vote on any post visible to them on a public board (`PENDING` posts are visible only to their author and admins — see §3.2).
+2. Voting on a post increments `voteCount` by 1 atomically.
+3. Voting again on the same post retracts the vote and decrements `voteCount` by 1 atomically.
+4. The output's `userHasVoted` reflects the caller's vote state immediately after the toggle.
+5. Guest votes are accepted only when `board.settings.guestVotingEnabled` is `true`.
+6. Guest deduplication uses Redis with a hashed-IP key and a 30-day TTL (`vote:guest:{boardId}:{postId}:{hashedIp}`).
+7. A `PENDING` post is invisible to non-author, non-admin callers (per §3.2), so they receive `NOT_FOUND` when attempting to vote on one. Admins and the post's own author may vote on a `PENDING` post with no restriction — there is no dedicated status guard inside `toggleVote` itself.
+8. Voting on a post on a private board, as a non-admin, returns `NOT_FOUND`.
+9. Rate limited: 60 requests per IP per minute.
+
+#### Error States
+
+| Condition | User-facing message | Logged |
+|-----------|--------------------|-----------------------|
+| Post not found / not visible to caller | "Post not found." | not logged |
+| Private board, non-admin | "This board doesn't exist." | `logger.info { boardId }` |
+| Guest voting disabled | "Guest voting is not enabled for this board." | not logged |
+| Rate limit exceeded | "Too many requests. Please try again later." | not logged |
+| DB / Redis error | "Something went wrong." | `logger.error { err, postId }` |
+
+#### Security Requirements
+
+- Guests are identified by a hashed IP (`hashIp()`), never the raw IP, for vote deduplication.
+- Authenticated users are deduplicated by the `@@unique([postId, userId])` constraint on `Vote`; guests are deduplicated by a Redis key with a 30-day TTL, not stored in Postgres (P-11).
+
+#### API Contract
+
+**Procedure:** `posts.toggleVote`  
+**Type:** `mutation`
+
+**Input:**
+```ts
+z.object({ postId: z.string().cuid() })
+```
+
+**Output:**
+```ts
+{
+  voteCount:    number,
+  userHasVoted: boolean,
 }
 ```
 
