@@ -20,7 +20,7 @@
 | P-08 | Similarity threshold | 0.4 — scores at or above this value surface a warning. |
 | P-09 | Votes | Upvote only. No downvotes. |
 | P-10 | Vote retraction | Toggle — users can retract their vote. |
-| P-11 | Guest vote deduplication | IP address in v1. Known limitation: shared NAT can conflate voters; document as accepted risk. |
+| P-11 | Guest vote deduplication | IP-based deduplication via Redis (hashed IP, TTL 30 days). Not stored in database — privacy.md override applied. Known limitation: shared NAT can conflate voters; documented as accepted risk. |
 | P-12 | Initial post status | Always `OPEN` (when moderation disabled) or `PENDING` (when moderation enabled). Not configurable by the caller. |
 | P-13 | Pinned post ordering | Multiple pinned posts ordered by `pinnedAt DESC` — most recently pinned appears first. |
 | P-14 | Delete strategy | Hard delete in v1. Soft delete (`deletedAt` field) deferred to v1.1. |
@@ -108,14 +108,14 @@ Vote {
   id        String    @id @default(cuid())
   postId    String                            // FK → Post
   userId    String?                           // FK → User; null for guest votes
-  guestIp   String?                           // IP-based guest deduplication (P-11); null for authenticated votes
+  // Guest deduplication via Redis (not stored in DB)
+  // privacy.md override — see implementation notes
   createdAt DateTime  @default(now())
 
   post      Post      @relation(...)
   user      User?     @relation(...)
 
   @@unique([postId, userId])                  // one vote per authenticated user per post
-  @@unique([postId, guestIp])                 // one vote per IP per post for guests
   @@index([postId])
   @@index([userId])
 }
@@ -448,7 +448,7 @@ z.object({ id: z.string() })
 z.object({
   boardId:  z.string().cuid(),
   status:   z.array(z.enum(["OPEN","UNDER_REVIEW","PLANNED","IN_PROGRESS","SHIPPED","CLOSED"])).optional(),
-  orderBy:  z.enum(["votes", "newest", "oldest"]).default("votes"),
+  orderBy:  z.enum(["votes", "newest", "oldest", "status"]).default("votes"),
   cursor:   z.string().optional(),  // opaque cursor from previous page
   limit:    z.number().int().min(1).max(50).default(20),
 })
@@ -702,7 +702,7 @@ Required indexes (beyond those on the Post model above):
 | `Post` | `(boardId, isPinned, voteCount DESC)` | Pin-first sort |
 | `Post` | `(boardId, createdAt DESC)` | Recency sort |
 | `Vote` | `(postId, userId)` | Unique constraint + `hasVoted` lookup |
-| `Vote` | `(postId, guestIp)` | Unique constraint for guest vote deduplication |
+| `Vote` | Redis key per (boardId, postId, hashedIp) | Guest vote deduplication — TTL 30 days, not in DB |
 | `Vote` | `(userId)` | User's vote history |
 | `Post` | GIN trigram on `title` | `posts.getSimilar` similarity search via pg_trgm |
 
