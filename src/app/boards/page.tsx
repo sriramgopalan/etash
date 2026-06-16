@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { BoardList } from "@/components/boards/BoardList";
+import { BoardSearch } from "@/components/boards/BoardSearch";
 import { PaginationNav } from "@/components/boards/PaginationNav";
 import { listBoards } from "@/server/repositories/board";
 
@@ -18,8 +19,16 @@ export default async function BoardsPage({ searchParams }: Props) {
   const result = await listBoards({ adminView: false, page, limit: 20, search });
 
   return (
-    <main>
-      <h1>Boards</h1>
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Boards</h1>
+        <p className="mt-1 text-sm text-gray-500">Browse and vote on feedback</p>
+      </header>
+
+      <div className="mb-6">
+        <BoardSearch action="/boards" defaultValue={search} />
+      </div>
+
       <BoardList boards={result.boards} ariaLabel="Public boards" emptyMessage="No boards found." />
       <PaginationNav page={result.page} totalPages={result.totalPages} />
     </main>

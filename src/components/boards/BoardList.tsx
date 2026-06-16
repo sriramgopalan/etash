@@ -15,10 +15,14 @@ export function BoardList({
   ariaLabel,
 }: Props) {
   if (boards.length === 0) {
-    return <p>{emptyMessage}</p>;
+    return (
+      <p className="rounded-lg border border-dashed border-gray-200 bg-white py-12 text-center text-sm text-gray-500">
+        {emptyMessage}
+      </p>
+    );
   }
   return (
-    <ul aria-label={ariaLabel}>
+    <ul aria-label={ariaLabel} className="space-y-3">
       {boards.map((board) => (
         <li key={board.id}>
           <BoardCard board={board} adminView={adminView} />

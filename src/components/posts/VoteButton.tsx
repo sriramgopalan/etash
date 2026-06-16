@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronUp } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "@/lib/trpc";
@@ -32,14 +33,14 @@ export function VoteButton({ postId, initialVoteCount, initialHasVoted }: Props)
       disabled={toggleVote.isPending}
       aria-label={hasVoted ? "Remove vote" : "Vote for this post"}
       aria-pressed={hasVoted}
-      className={`flex flex-col items-center rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+      className={`flex w-14 flex-col items-center rounded-lg border px-2 py-2 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
         hasVoted
-          ? "border-blue-500 bg-blue-50 text-blue-700"
-          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-      } disabled:cursor-not-allowed disabled:opacity-50`}
+          ? "border-blue-200 bg-blue-50 text-blue-600"
+          : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:bg-gray-50"
+      }`}
     >
-      <span aria-hidden="true">{hasVoted ? "▲" : "△"}</span>
-      <span>{voteCount}</span>
+      <ChevronUp className="h-4 w-4" aria-hidden="true" />
+      <span className="text-base font-bold leading-tight">{voteCount}</span>
     </button>
   );
 }
