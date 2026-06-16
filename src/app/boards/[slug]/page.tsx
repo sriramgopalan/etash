@@ -1,3 +1,4 @@
+import { Inbox } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -50,9 +51,19 @@ export default async function PublicBoardPage({ params, searchParams }: Props) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
+      <nav aria-label="Breadcrumb" className="mb-4 text-sm text-gray-500">
+        <Link href="/boards" className="hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          Boards
+        </Link>
+        <span className="px-1.5 text-gray-300" aria-hidden="true">
+          /
+        </span>
+        <span className="text-gray-700">{board.name}</span>
+      </nav>
+
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{board.name}</h1>
-        {board.description && <p className="mt-1 text-gray-600">{board.description}</p>}
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">{board.name}</h1>
+        {board.description && <p className="mt-1 text-gray-500">{board.description}</p>}
       </header>
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -80,7 +91,11 @@ export default async function PublicBoardPage({ params, searchParams }: Props) {
 
       <section aria-label="Posts">
         {result.items.length === 0 ? (
-          <p className="text-center text-gray-500">No posts yet. Be the first!</p>
+          <div className="flex flex-col items-center rounded-lg border border-dashed border-gray-200 bg-white py-16 text-center">
+            <Inbox className="h-8 w-8 text-gray-300" aria-hidden="true" />
+            <p className="mt-3 text-sm font-medium text-gray-900">No posts yet</p>
+            <p className="mt-1 text-sm text-gray-500">Be the first to share your feedback.</p>
+          </div>
         ) : (
           <ul className="space-y-3" role="list">
             {result.items.map((post) => (
@@ -95,7 +110,7 @@ export default async function PublicBoardPage({ params, searchParams }: Props) {
           <div className="mt-6 text-center">
             <Link
               href={`/boards/${slug}?orderBy=${validOrderBy}&cursor=${result.nextCursor}`}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               Load more
             </Link>

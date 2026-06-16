@@ -11,13 +11,13 @@ const STATUS_LABELS: Record<PostStatus, string> = {
 };
 
 const STATUS_CLASSES: Record<PostStatus, string> = {
-  PENDING: "bg-yellow-100 text-yellow-800",
-  OPEN: "bg-blue-100 text-blue-800",
-  UNDER_REVIEW: "bg-purple-100 text-purple-800",
-  PLANNED: "bg-indigo-100 text-indigo-800",
-  IN_PROGRESS: "bg-orange-100 text-orange-800",
-  SHIPPED: "bg-green-100 text-green-800",
-  CLOSED: "bg-gray-100 text-gray-600",
+  PENDING: "bg-gray-100 text-gray-600",
+  OPEN: "bg-blue-50 text-blue-700",
+  UNDER_REVIEW: "bg-purple-50 text-purple-700",
+  PLANNED: "bg-indigo-50 text-indigo-700",
+  IN_PROGRESS: "bg-amber-50 text-amber-700",
+  SHIPPED: "bg-green-50 text-green-700",
+  CLOSED: "bg-gray-100 text-gray-500",
 };
 
 interface Props {

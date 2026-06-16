@@ -224,12 +224,18 @@ export async function listBoards(opts: ListBoardsOptions = {}): Promise<BoardLis
         isListed: true,
         position: true,
         createdAt: true,
+        _count: { select: { posts: true } },
       },
     }),
     prisma.board.count({ where }),
   ]);
 
-  return { boards: rows, total, page: clampedPage, totalPages: Math.ceil(total / clampedLimit) };
+  const boards: BoardListItem[] = rows.map(({ _count, ...board }) => ({
+    ...board,
+    postCount: _count.posts,
+  }));
+
+  return { boards, total, page: clampedPage, totalPages: Math.ceil(total / clampedLimit) };
 }
 
 // ---------------------------------------------------------------------------

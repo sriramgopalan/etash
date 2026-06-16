@@ -27,6 +27,7 @@ export interface BoardListItem {
   isListed: boolean;
   position: number;
   createdAt: Date;
+  postCount: number;
 }
 
 export interface BoardListResult {
