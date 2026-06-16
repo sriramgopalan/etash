@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { redis } from "@/lib/redis";
 import { prisma } from "@/server/db";
+import { BASE_POST, BOARD_ID, makeRow, POST_ID, USER_ID } from "@/tests/helpers/post-fixtures";
 import { mockReset, type DeepMockProxy, type PrismaClient } from "@/tests/helpers/repository-setup";
 
 vi.mock("@/server/db");
@@ -21,6 +22,7 @@ const {
   createPost,
   deletePost,
   getPostById,
+  getPostByNumber,
   getSimilarPosts,
   hashIp,
   listPosts,
@@ -29,27 +31,6 @@ const {
   toggleVote,
   updatePost,
 } = await import("@/server/repositories/post");
-
-const BOARD_ID = "cboard1234567890";
-const POST_ID = "cpost12345678901";
-const USER_ID = "cuser12345678901";
-
-const BASE_POST = {
-  id: POST_ID,
-  postNumber: 1,
-  boardId: BOARD_ID,
-  authorId: USER_ID,
-  guestName: null,
-  title: "My feature request",
-  description: "Please add this",
-  status: PostStatus.OPEN,
-  isPinned: false,
-  pinnedAt: null,
-  voteCount: 0,
-  createdAt: new Date("2025-01-01"),
-  updatedAt: new Date("2025-01-01"),
-  author: { id: USER_ID, name: "Alice", email: "alice@example.com" },
-};
 
 describe("post repository", () => {
   afterEach(() => {
@@ -154,6 +135,21 @@ describe("post repository", () => {
         }),
       ).rejects.toMatchObject({ code: "CONFLICT" });
     });
+
+    it("rethrows non-P2002 errors unchanged", async () => {
+      const dbError = new Error("connection lost");
+      prismaMock.post.create.mockRejectedValue(dbError);
+      await expect(
+        createPost({
+          boardId: BOARD_ID,
+          authorId: USER_ID,
+          guestName: null,
+          title: "Test",
+          description: null,
+          initialStatus: PostStatus.OPEN,
+        }),
+      ).rejects.toBe(dbError);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -174,32 +170,21 @@ describe("post repository", () => {
       expect(result).toBeNull();
     });
 
+    it("returns null when admin requests a non-existent post", async () => {
+      prismaMock.post.findUnique.mockResolvedValue(null);
+      const result = await getPostById("notfound", { isAdmin: true });
+      expect(result).toBeNull();
+    });
+
     it("returns null for post on private board to non-admin", async () => {
-      const publicRow = {
-        id: POST_ID, postNumber: 1, boardId: BOARD_ID, guestName: null,
-        title: "Test", description: null, status: PostStatus.OPEN,
-        isPinned: false, voteCount: 0, createdAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
+      prismaMock.post.findUnique.mockResolvedValue(makeRow() as never);
       prismaMock.board.findUnique.mockResolvedValue({ isPublic: false } as never);
       const result = await getPostById(POST_ID, { isAdmin: false });
       expect(result).toBeNull();
     });
 
     it("returns public view without author fields to non-admin", async () => {
-      const publicRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Test",
-        description: null,
-        status: PostStatus.OPEN,
-        isPinned: false,
-        voteCount: 5,
-        createdAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
+      prismaMock.post.findUnique.mockResolvedValue(makeRow({ voteCount: 5 }) as never);
       prismaMock.board.findUnique.mockResolvedValue({ isPublic: true } as never);
       prismaMock.vote.findMany.mockResolvedValue([]);
       const result = await getPostById(POST_ID, { isAdmin: false, callerId: USER_ID });
@@ -208,44 +193,84 @@ describe("post repository", () => {
     });
 
     it("returns null for PENDING post when caller is not the author", async () => {
-      const pendingRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Pending",
-        description: null,
-        status: PostStatus.PENDING,
-        isPinned: false,
-        voteCount: 0,
-        createdAt: new Date(),
-      };
       prismaMock.post.findUnique
-        .mockResolvedValueOnce(pendingRow as never)
+        .mockResolvedValueOnce(makeRow({ status: PostStatus.PENDING, title: "Pending" }) as never)
         .mockResolvedValueOnce({ authorId: "different-user" } as never);
       prismaMock.board.findUnique.mockResolvedValue({ isPublic: true } as never);
       const result = await getPostById(POST_ID, { isAdmin: false, callerId: USER_ID });
       expect(result).toBeNull();
     });
 
+    it("returns null for PENDING post when caller is anonymous", async () => {
+      prismaMock.post.findUnique.mockResolvedValue(makeRow({ status: PostStatus.PENDING, title: "Pending" }) as never);
+      prismaMock.board.findUnique.mockResolvedValue({ isPublic: true } as never);
+      const result = await getPostById(POST_ID, { isAdmin: false });
+      expect(result).toBeNull();
+    });
+
+    it("returns PENDING post to its author", async () => {
+      prismaMock.post.findUnique
+        .mockResolvedValueOnce(makeRow({ status: PostStatus.PENDING, title: "Pending" }) as never)
+        .mockResolvedValueOnce({ authorId: USER_ID } as never);
+      prismaMock.board.findUnique.mockResolvedValue({ isPublic: true } as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await getPostById(POST_ID, { isAdmin: false, callerId: USER_ID });
+      expect(result?.status).toBe(PostStatus.PENDING);
+    });
+
     it("sets hasVoted=true when authenticated user has voted", async () => {
-      const publicRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Test",
-        description: null,
-        status: PostStatus.OPEN,
-        isPinned: false,
-        voteCount: 3,
-        createdAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
+      prismaMock.post.findUnique.mockResolvedValue(makeRow({ voteCount: 3 }) as never);
       prismaMock.board.findUnique.mockResolvedValue({ isPublic: true } as never);
       prismaMock.vote.findMany.mockResolvedValue([{ postId: POST_ID }] as never);
       const result = await getPostById(POST_ID, { isAdmin: false, callerId: USER_ID });
       expect(result?.hasVoted).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // getPostByNumber
+  // ---------------------------------------------------------------------------
+
+  describe("getPostByNumber", () => {
+    it("returns admin view by postNumber for admin", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(BASE_POST as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await getPostByNumber("test-board", 1, { isAdmin: true, callerId: USER_ID });
+      expect(result).toMatchObject({ id: POST_ID, authorId: USER_ID });
+    });
+
+    it("returns null when admin requests a non-existent postNumber", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(null);
+      const result = await getPostByNumber("test-board", 999, { isAdmin: true });
+      expect(result).toBeNull();
+    });
+
+    it("returns null for a post on a private board to non-admin", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(null);
+      const result = await getPostByNumber("private-board", 1, { isAdmin: false });
+      expect(result).toBeNull();
+    });
+
+    it("returns public view by postNumber to non-admin", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(makeRow() as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await getPostByNumber("test-board", 1, { isAdmin: false, callerId: USER_ID });
+      expect(result).not.toHaveProperty("author");
+    });
+
+    it("returns null for PENDING post by postNumber when caller is not the author", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(makeRow({ status: PostStatus.PENDING, title: "Pending" }) as never);
+      prismaMock.post.findUnique.mockResolvedValue({ authorId: "different-user" } as never);
+      const result = await getPostByNumber("test-board", 1, { isAdmin: false, callerId: USER_ID });
+      expect(result).toBeNull();
+    });
+
+    it("returns PENDING post by postNumber to its author", async () => {
+      prismaMock.post.findFirst.mockResolvedValue(makeRow({ status: PostStatus.PENDING, title: "Pending" }) as never);
+      prismaMock.post.findUnique.mockResolvedValue({ authorId: USER_ID } as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await getPostByNumber("test-board", 1, { isAdmin: false, callerId: USER_ID });
+      expect(result?.status).toBe(PostStatus.PENDING);
     });
   });
 
@@ -308,6 +333,42 @@ describe("post repository", () => {
         expect.objectContaining({ data: expect.objectContaining({ title: "New title" }) }),
       );
       expect(result.title).toBe("New title");
+    });
+
+    it("updates only description when title is omitted", async () => {
+      prismaMock.post.findUnique.mockResolvedValue({
+        authorId: USER_ID,
+        status: PostStatus.OPEN,
+        boardId: BOARD_ID,
+      } as never);
+      prismaMock.post.update.mockResolvedValue({ ...BASE_POST, description: "New desc" } as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await updatePost(POST_ID, { description: "New desc" }, { isAdmin: false, callerId: USER_ID });
+      expect(prismaMock.post.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { description: "New desc" },
+        }),
+      );
+      expect(result.description).toBe("New desc");
+    });
+
+    it("returns current state without updating when payload is empty (no-op)", async () => {
+      prismaMock.post.findUnique
+        .mockResolvedValueOnce({ authorId: USER_ID, status: PostStatus.OPEN, boardId: BOARD_ID } as never)
+        .mockResolvedValueOnce(BASE_POST as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await updatePost(POST_ID, {}, { isAdmin: false, callerId: USER_ID });
+      expect(prismaMock.post.update).not.toHaveBeenCalled();
+      expect(result.id).toBe(POST_ID);
+    });
+
+    it("throws NOT_FOUND when a no-op update finds the post deleted between checks", async () => {
+      prismaMock.post.findUnique
+        .mockResolvedValueOnce({ authorId: USER_ID, status: PostStatus.OPEN, boardId: BOARD_ID } as never)
+        .mockResolvedValueOnce(null);
+      await expect(
+        updatePost(POST_ID, {}, { isAdmin: false, callerId: USER_ID }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });
 
@@ -453,6 +514,12 @@ describe("post repository", () => {
   });
 
   describe("toggleVote — guest", () => {
+    it("throws VALIDATION_ERROR when voter has neither userId nor hashedIp", async () => {
+      await expect(
+        toggleVote(POST_ID, { userId: undefined, hashedIp: undefined, boardId: BOARD_ID }),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
     it("rejects when Redis key already exists (already voted)", async () => {
       // M1: atomic SET NX returns null when key already exists
       redisMock.set.mockResolvedValue(null);
@@ -531,6 +598,83 @@ describe("post repository", () => {
 
       const result = await listPosts({ boardId: BOARD_ID, callerId: USER_ID, isAdmin: false });
       expect(result.items[0]?.hasVoted).toBe(true);
+    });
+
+    it("returns an empty items array when the board has no posts", async () => {
+      prismaMock.post.findMany.mockResolvedValue([] as never);
+      const result = await listPosts({ boardId: BOARD_ID, isAdmin: false });
+      expect(result.items).toHaveLength(0);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it("decodes a valid cursor and uses it for public pagination", async () => {
+      const cursor = Buffer.from(`${new Date().toISOString()}|${POST_ID}`).toString("base64");
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST] as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      await listPosts({ boardId: BOARD_ID, isAdmin: false, cursor });
+      expect(prismaMock.post.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ cursor: { id: POST_ID }, skip: 1 }),
+      );
+    });
+
+    it("decodes a valid cursor and uses it for admin pagination", async () => {
+      const cursor = Buffer.from(`${new Date().toISOString()}|${POST_ID}`).toString("base64");
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST] as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      await listPosts({ boardId: BOARD_ID, isAdmin: true, cursor });
+      expect(prismaMock.post.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ cursor: { id: POST_ID }, skip: 1 }),
+      );
+    });
+
+    it("throws VALIDATION_ERROR for a malformed cursor (no separator)", async () => {
+      const cursor = Buffer.from("no-pipe-here").toString("base64");
+      await expect(
+        listPosts({ boardId: BOARD_ID, isAdmin: false, cursor }),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("throws VALIDATION_ERROR for a cursor with an empty id", async () => {
+      const cursor = Buffer.from("2025-01-01T00:00:00.000Z|").toString("base64");
+      await expect(
+        listPosts({ boardId: BOARD_ID, isAdmin: false, cursor }),
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    });
+
+    it("resolves hasVoted from guest hashedIp via redis.mget", async () => {
+      const otherPost = { ...BASE_POST, id: "post-2" };
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST, otherPost] as never);
+      redisMock.mget.mockResolvedValue(["1", undefined]);
+      const result = await listPosts({ boardId: BOARD_ID, isAdmin: false, hashedIp: "abc123" });
+      expect(result.items.find((i) => i.id === POST_ID)?.hasVoted).toBe(true);
+      expect(result.items.find((i) => i.id === "post-2")?.hasVoted).toBe(false);
+    });
+
+    it("returns admin items including author fields when isAdmin=true", async () => {
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST] as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await listPosts({ boardId: BOARD_ID, isAdmin: true, callerId: USER_ID });
+      expect(result.items[0]).toMatchObject({ authorId: USER_ID, guestName: null });
+    });
+
+    it("filters by statusFilter when provided", async () => {
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST] as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      await listPosts({ boardId: BOARD_ID, isAdmin: false, statusFilter: [PostStatus.OPEN, PostStatus.PLANNED] });
+      expect(prismaMock.post.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([{ status: { in: [PostStatus.OPEN, PostStatus.PLANNED] } }]),
+          }),
+        }),
+      );
+    });
+
+    it.each(["newest", "oldest", "status"] as const)("orders by %s", async (orderBy) => {
+      prismaMock.post.findMany.mockResolvedValue([BASE_POST] as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const result = await listPosts({ boardId: BOARD_ID, isAdmin: false, orderBy });
+      expect(result.items).toHaveLength(1);
     });
   });
 

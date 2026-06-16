@@ -308,6 +308,32 @@ export async function getPostByNumber(
   return { ...row, hasVoted };
 }
 
+function toListItem(
+  r: {
+    id: string;
+    postNumber: number;
+    title: string;
+    description: string | null;
+    status: PostStatus;
+    isPinned: boolean;
+    voteCount: number;
+    createdAt: Date;
+  },
+  hasVotedMap: Map<string, boolean>,
+) {
+  return {
+    id: r.id,
+    postNumber: r.postNumber,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    isPinned: r.isPinned,
+    voteCount: r.voteCount,
+    hasVoted: hasVotedMap.get(r.id) ?? false,
+    createdAt: r.createdAt,
+  };
+}
+
 export async function listPosts(opts: ListPostsOptions): Promise<PostListResult> {
   const {
     boardId,
@@ -339,15 +365,7 @@ export async function listPosts(opts: ListPostsOptions): Promise<PostListResult>
     );
     return {
       items: page.map((r) => ({
-        id: r.id,
-        postNumber: r.postNumber,
-        title: r.title,
-        description: r.description,
-        status: r.status,
-        isPinned: r.isPinned,
-        voteCount: r.voteCount,
-        hasVoted: hasVotedMap.get(r.id) ?? false,
-        createdAt: r.createdAt,
+        ...toListItem(r, hasVotedMap),
         guestName: r.guestName,
         authorId: r.authorId,
         author: r.author,
@@ -365,17 +383,7 @@ export async function listPosts(opts: ListPostsOptions): Promise<PostListResult>
     voter,
   );
   return {
-    items: page.map((r) => ({
-      id: r.id,
-      postNumber: r.postNumber,
-      title: r.title,
-      description: r.description,
-      status: r.status,
-      isPinned: r.isPinned,
-      voteCount: r.voteCount,
-      hasVoted: hasVotedMap.get(r.id) ?? false,
-      createdAt: r.createdAt,
-    })),
+    items: page.map((r) => toListItem(r, hasVotedMap)),
     nextCursor,
   };
 }

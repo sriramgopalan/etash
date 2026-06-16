@@ -6,6 +6,7 @@ import { mockReset, type DeepMockProxy } from "vitest-mock-extended";
 
 import { redis } from "@/lib/redis";
 import { prisma } from "@/server/db";
+import { BASE_POST, BOARD_ID, makeRow, POST_ID, USER_ID } from "@/tests/helpers/post-fixtures";
 
 const redisMock = redis as unknown as { mget: ReturnType<typeof vi.fn>; exists: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
 
@@ -22,9 +23,6 @@ const { createTestContext, createAuthedContext, createAdminContext } = await imp
 
 const createCaller = createCallerFactory(postRouter);
 
-const BOARD_ID = "cboard1234567890";
-const POST_ID = "cpost12345678901";
-const USER_ID = "cuser12345678901";
 const ADMIN_ID = "cadmin1234567890";
 
 const DEFAULT_SETTINGS = {
@@ -48,22 +46,19 @@ const BASE_BOARD = {
   _count: { posts: 0 },
 };
 
-const BASE_POST = {
-  id: POST_ID,
-  postNumber: 1,
-  boardId: BOARD_ID,
-  authorId: USER_ID,
-  guestName: null,
-  title: "My feature request",
-  description: "Please add this",
-  status: PostStatus.OPEN,
-  isPinned: false,
-  pinnedAt: null,
-  voteCount: 0,
-  createdAt: new Date("2025-01-01"),
-  updatedAt: new Date("2025-01-01"),
-  author: { id: USER_ID, name: "Alice", email: "alice@example.com" },
-};
+function mockToggleVotePost(settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
+  const publicRow = makeRow({
+    authorId: USER_ID,
+    author: null,
+    pinnedAt: null,
+    updatedAt: new Date(),
+  });
+  prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
+  prismaMock.board.findUnique.mockResolvedValue({
+    ...BASE_BOARD,
+    settingsJson: { ...DEFAULT_SETTINGS, ...settingsOverrides },
+  } as never);
+}
 
 describe("postRouter", () => {
   beforeEach(() => {
@@ -179,6 +174,55 @@ describe("postRouter", () => {
         caller.create({ boardId: BOARD_ID, title: "A valid title" }),
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
+
+    it("creates post with a description", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      prismaMock.$transaction.mockImplementation(
+        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
+      );
+      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
+      prismaMock.post.create.mockResolvedValue({ id: POST_ID, postNumber: 1 } as never);
+
+      const caller = createCaller(createAuthedContext(USER_ID));
+      await caller.create({ boardId: BOARD_ID, title: "Hello world", description: "Some details" });
+      expect(prismaMock.post.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ description: "Some details" }) }),
+      );
+    });
+
+    it("returns CONFLICT when createPost reports a post-number conflict", async () => {
+      const { Prisma } = await import("@prisma/client");
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      prismaMock.$transaction.mockImplementation(
+        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
+      );
+      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
+      prismaMock.post.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+          code: "P2002",
+          clientVersion: "5.0.0",
+        }),
+      );
+
+      const caller = createCaller(createAuthedContext(USER_ID));
+      await expect(
+        caller.create({ boardId: BOARD_ID, title: "Hello world" }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when createPost fails unexpectedly", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      prismaMock.$transaction.mockImplementation(
+        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
+      );
+      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
+      prismaMock.post.create.mockRejectedValue(new Error("db down"));
+
+      const caller = createCaller(createAuthedContext(USER_ID));
+      await expect(
+        caller.create({ boardId: BOARD_ID, title: "Hello world" }),
+      ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -187,19 +231,7 @@ describe("postRouter", () => {
 
   describe("posts.getById", () => {
     it("returns public post to unauthenticated caller", async () => {
-      const publicRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Test",
-        description: null,
-        status: PostStatus.OPEN,
-        isPinned: false,
-        voteCount: 0,
-        createdAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
+      prismaMock.post.findUnique.mockResolvedValue(makeRow() as never);
       prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
       prismaMock.vote.findUnique.mockResolvedValue(null);
 
@@ -214,6 +246,14 @@ describe("postRouter", () => {
       const caller = createCaller(createTestContext());
       await expect(caller.getById({ id: "cnotfound0000001" })).rejects.toMatchObject({
         code: "NOT_FOUND",
+      });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when the repository throws unexpectedly", async () => {
+      prismaMock.post.findUnique.mockRejectedValue(new Error("db down"));
+      const caller = createCaller(createTestContext());
+      await expect(caller.getById({ id: POST_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
       });
     });
   });
@@ -257,7 +297,7 @@ describe("postRouter", () => {
         boardId: BOARD_ID,
       } as never);
       const caller = createCaller(createAuthedContext(USER_ID));
-      await expect(caller.update({ id: POST_ID, title: "New" })).rejects.toMatchObject({
+      await expect(caller.update({ id: POST_ID, title: "New title here" })).rejects.toMatchObject({
         code: "BAD_REQUEST",
       });
     });
@@ -273,6 +313,42 @@ describe("postRouter", () => {
       const caller = createCaller(createAdminContext(ADMIN_ID));
       const result = await caller.update({ id: POST_ID, title: "Admin fix" });
       expect(result.title).toBe("Admin fix");
+    });
+
+    it("allows author to update their own post and returns a restricted view", async () => {
+      prismaMock.post.findUnique.mockResolvedValue({
+        authorId: USER_ID,
+        status: PostStatus.OPEN,
+        boardId: BOARD_ID,
+      } as never);
+      prismaMock.post.update.mockResolvedValue({ ...BASE_POST, title: "My update" } as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const caller = createCaller(createAuthedContext(USER_ID));
+      const result = await caller.update({ id: POST_ID, title: "My update" });
+      expect(result.title).toBe("My update");
+      expect(result).not.toHaveProperty("author");
+      expect(result).not.toHaveProperty("pinnedAt");
+    });
+
+    it("updates only description without changing title", async () => {
+      prismaMock.post.findUnique.mockResolvedValue({
+        authorId: USER_ID,
+        status: PostStatus.OPEN,
+        boardId: BOARD_ID,
+      } as never);
+      prismaMock.post.update.mockResolvedValue({ ...BASE_POST, description: "Updated description" } as never);
+      prismaMock.vote.findMany.mockResolvedValue([]);
+      const caller = createCaller(createAuthedContext(USER_ID));
+      const result = await caller.update({ id: POST_ID, description: "Updated description" });
+      expect(result.description).toBe("Updated description");
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when update fails unexpectedly", async () => {
+      prismaMock.post.findUnique.mockRejectedValue(new Error("db down"));
+      const caller = createCaller(createAuthedContext(USER_ID));
+      await expect(
+        caller.update({ id: POST_ID, title: "New title here" }),
+      ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
     });
   });
 
@@ -299,6 +375,40 @@ describe("postRouter", () => {
       const result = await caller.delete({ id: POST_ID });
       expect(result.id).toBe(POST_ID);
       expect(result.deletedCounts.votes).toBe(2);
+    });
+
+    it("returns NOT_FOUND when delete fails with a P2025 error", async () => {
+      prismaMock.$transaction.mockRejectedValue(
+        Object.assign(new Error("Record not found"), { code: "P2025" }),
+      );
+      const caller = createCaller(createAdminContext(ADMIN_ID));
+      await expect(caller.delete({ id: POST_ID })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when delete fails with a different prisma error code", async () => {
+      prismaMock.$transaction.mockRejectedValue(
+        Object.assign(new Error("Some other error"), { code: "P9999" }),
+      );
+      const caller = createCaller(createAdminContext(ADMIN_ID));
+      await expect(caller.delete({ id: POST_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when delete fails with a generic error", async () => {
+      prismaMock.$transaction.mockRejectedValue(new Error("boom"));
+      const caller = createCaller(createAdminContext(ADMIN_ID));
+      await expect(caller.delete({ id: POST_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when delete fails with a non-error value", async () => {
+      prismaMock.$transaction.mockRejectedValue({ code: "P2025" });
+      const caller = createCaller(createAdminContext(ADMIN_ID));
+      await expect(caller.delete({ id: POST_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
     });
   });
 
@@ -334,6 +444,24 @@ describe("postRouter", () => {
       const caller = createCaller(createTestContext());
       const result = await caller.list({ boardId: BOARD_ID });
       expect(result.items).toHaveLength(1);
+    });
+
+    it("returns BAD_REQUEST when cursor is malformed", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      const cursor = Buffer.from("no-pipe-here").toString("base64");
+      const caller = createCaller(createTestContext());
+      await expect(caller.list({ boardId: BOARD_ID, cursor })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when listPosts fails unexpectedly", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      prismaMock.post.findMany.mockRejectedValue(new Error("db down"));
+      const caller = createCaller(createTestContext());
+      await expect(caller.list({ boardId: BOARD_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
     });
   });
 
@@ -416,25 +544,7 @@ describe("postRouter", () => {
 
   describe("posts.toggleVote", () => {
     it("toggles vote for authenticated user", async () => {
-      // getPostById needs to return something for the board lookup
-      const publicRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Test",
-        description: null,
-        status: PostStatus.OPEN,
-        isPinned: false,
-        voteCount: 0,
-        createdAt: new Date(),
-        authorId: USER_ID,
-        author: null,
-        pinnedAt: null,
-        updatedAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      mockToggleVotePost();
       prismaMock.vote.findMany.mockResolvedValue([]);
       prismaMock.vote.findUnique.mockResolvedValue(null);
       prismaMock.vote.create.mockResolvedValue({} as never);
@@ -450,28 +560,54 @@ describe("postRouter", () => {
     });
 
     it("rejects guest vote when guestVotingEnabled=false", async () => {
-      const publicRow = {
-        id: POST_ID,
-        postNumber: 1,
-        boardId: BOARD_ID,
-        guestName: null,
-        title: "Test",
-        description: null,
-        status: PostStatus.OPEN,
-        isPinned: false,
-        voteCount: 0,
-        createdAt: new Date(),
-        authorId: USER_ID,
-        author: null,
-        pinnedAt: null,
-        updatedAt: new Date(),
-      };
-      prismaMock.post.findUnique.mockResolvedValue(publicRow as never);
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      mockToggleVotePost();
 
       const caller = createCaller(createTestContext());
       await expect(caller.toggleVote({ postId: POST_ID })).rejects.toMatchObject({
         code: "FORBIDDEN",
+      });
+    });
+
+    it("throws NOT_FOUND when the post does not exist", async () => {
+      prismaMock.post.findUnique.mockResolvedValue(null);
+      const caller = createCaller(createTestContext());
+      await expect(caller.toggleVote({ postId: POST_ID })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("allows a guest vote when guestVotingEnabled is true", async () => {
+      mockToggleVotePost({ guestVotingEnabled: true });
+      redisMock.set.mockResolvedValue("OK");
+      prismaMock.$transaction.mockImplementation(
+        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
+      );
+      prismaMock.vote.create.mockResolvedValue({} as never);
+      prismaMock.post.update.mockResolvedValue({ voteCount: 1 } as never);
+
+      const caller = createCaller(createTestContext());
+      const result = await caller.toggleVote({ postId: POST_ID });
+      expect(result.voteCount).toBe(1);
+      expect(result.userHasVoted).toBe(false);
+    });
+
+    it("returns FORBIDDEN when a guest has already voted", async () => {
+      mockToggleVotePost({ guestVotingEnabled: true });
+      redisMock.set.mockResolvedValue(null);
+
+      const caller = createCaller(createTestContext());
+      await expect(caller.toggleVote({ postId: POST_ID })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when toggleVote fails unexpectedly", async () => {
+      mockToggleVotePost();
+      prismaMock.$transaction.mockRejectedValue(new Error("db down"));
+
+      const caller = createCaller(createAuthedContext(USER_ID));
+      await expect(caller.toggleVote({ postId: POST_ID })).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
       });
     });
   });
@@ -505,6 +641,15 @@ describe("postRouter", () => {
       const caller = createCaller(createTestContext());
       const result = await caller.getSimilar({ boardId: BOARD_ID, title: "similar" });
       expect(result.items[0]?.title).toBe("Similar");
+    });
+
+    it("returns INTERNAL_SERVER_ERROR when getSimilarPosts fails", async () => {
+      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+      prismaMock.$queryRaw.mockRejectedValue(new Error("db down"));
+      const caller = createCaller(createTestContext());
+      await expect(
+        caller.getSimilar({ boardId: BOARD_ID, title: "test" }),
+      ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
     });
   });
 });
