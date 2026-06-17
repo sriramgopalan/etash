@@ -2,23 +2,21 @@ import { PostStatus } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import type { BoardSettings } from "@/lib/board-settings";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { stripHtml } from "@/lib/sanitize";
-import { getBoardById } from "@/server/repositories/board";
 import {
   createPost,
   deletePost,
   getSimilarPosts,
   getPostById,
-  hashIp,
   listPosts,
   setPostPin,
   setPostStatus,
   toggleVote,
   updatePost,
 } from "@/server/repositories/post";
+import { getViewer, requireBoardVisible } from "@/server/routers/_helpers";
 import {
   adminProcedure,
   applyRateLimit,
@@ -26,42 +24,6 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "@/server/trpc";
-import type { PostViewer } from "@/types/post";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function getViewer(ctx: { session: { user: { id: string; role: string } } | null; ip: string }): PostViewer {
-  return {
-    isAdmin: ctx.session?.user?.role === "ADMIN",
-    callerId: ctx.session?.user?.id,
-    hashedIp: hashIp(ctx.ip),
-  };
-}
-
-async function requireBoardVisible(
-  boardId: string,
-  isAdmin: boolean,
-  context: string,
-): Promise<{ settings: BoardSettings; isPublic: boolean }> {
-  const board = await getBoardById(boardId);
-  if (!board) {
-    logger.info({ boardId }, context + ": board not found");
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      cause: new AppError("NOT_FOUND", "This board doesn't exist."),
-    });
-  }
-  if (!board.isPublic && !isAdmin) {
-    logger.info({ boardId }, context + ": private board blocked non-admin");
-    throw new TRPCError({
-      code: "NOT_FOUND",
-      cause: new AppError("NOT_FOUND", "This board doesn't exist."),
-    });
-  }
-  return { settings: board.settings, isPublic: board.isPublic };
-}
 
 // ---------------------------------------------------------------------------
 // Input schemas

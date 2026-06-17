@@ -154,6 +154,10 @@ export const authRouter = createTRPCRouter({
       await invalidateAllUserSessionCaches(userId);
 
       await prisma.$transaction([
+        prisma.comment.updateMany({
+          where: { authorId: userId },
+          data: { authorId: null, body: "[deleted]" },
+        }),
         prisma.session.deleteMany({ where: { userId } }),
         prisma.account.deleteMany({ where: { userId } }),
         prisma.verificationToken.deleteMany({ where: { identifier: email } }),
