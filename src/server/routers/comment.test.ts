@@ -1,3 +1,4 @@
+// jscpd:ignore-start
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,19 +15,11 @@ import {
   makeCommentRow,
 } from "@/tests/helpers/comment-fixtures";
 import { makeRow } from "@/tests/helpers/post-fixtures";
+import { ADMIN_ID, BASE_BOARD, DEFAULT_SETTINGS, makePipelineMock, type RouterRedisMock } from "@/tests/helpers/router-setup";
 
-const redisMock = redis as unknown as {
-  mget: ReturnType<typeof vi.fn>;
-  exists: ReturnType<typeof vi.fn>;
-  set: ReturnType<typeof vi.fn>;
-  pipeline: ReturnType<typeof vi.fn>;
-};
+const redisMock = redis as unknown as RouterRedisMock;
 
-const pipelineMock = {
-  incr: vi.fn().mockReturnThis(),
-  expire: vi.fn().mockReturnThis(),
-  exec: vi.fn<() => Promise<[Error | null, unknown][]>>(),
-};
+const pipelineMock = makePipelineMock();
 
 vi.mock("@/server/db");
 vi.mock("@/lib/redis", () => ({
@@ -47,29 +40,7 @@ const { createTestContext, createAuthedContext, createAdminContext } = await imp
 );
 
 const createCaller = createCallerFactory(commentRouter);
-
-const ADMIN_ID = "cadmin1234567890";
-
-const DEFAULT_SETTINGS = {
-  whoCanPost: "AUTHENTICATED" as "ANYONE" | "AUTHENTICATED" | "ADMINS_ONLY",
-  guestVotingEnabled: false,
-  postModerationEnabled: false,
-};
-
-const BASE_BOARD = {
-  id: BOARD_ID,
-  slug: "test-board",
-  name: "Test Board",
-  description: null,
-  isPublic: true,
-  isListed: true,
-  settingsJson: DEFAULT_SETTINGS,
-  createdAt: new Date("2024-01-01"),
-  ownerId: "owner-1",
-  position: 0,
-  updatedAt: new Date("2024-01-01"),
-  _count: { posts: 0 },
-};
+// jscpd:ignore-end
 
 const PUBLIC_POST = makeRow({ boardId: BOARD_ID });
 const ADMIN_POST = makeRow({
@@ -166,8 +137,12 @@ describe("commentRouter", () => {
   // ---------------------------------------------------------------------------
 
   describe("comments.create", () => {
-    function mockCreate(settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
-      prismaMock.post.findUnique.mockResolvedValue(PUBLIC_POST as never);
+    function mockCreate(
+      settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {},
+      postRow = PUBLIC_POST,
+    ) {
+      prismaMock.post.findUnique.mockResolvedValue(postRow as never);
+      // jscpd:ignore-start
       prismaMock.board.findUnique.mockResolvedValue({
         ...BASE_BOARD,
         settingsJson: { ...DEFAULT_SETTINGS, ...settingsOverrides },
@@ -175,6 +150,7 @@ describe("commentRouter", () => {
       prismaMock.$transaction.mockImplementation(
         ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
       );
+      // jscpd:ignore-end
       prismaMock.comment.create.mockResolvedValue(BASE_COMMENT as never);
       prismaMock.post.update.mockResolvedValue({} as never);
     }
@@ -229,17 +205,7 @@ describe("commentRouter", () => {
     });
 
     it("admin can comment on ADMINS_ONLY board", async () => {
-      prismaMock.post.findUnique.mockResolvedValue(ADMIN_POST as never);
-      prismaMock.board.findUnique.mockResolvedValue({
-        ...BASE_BOARD,
-        settingsJson: { ...DEFAULT_SETTINGS, whoCanPost: "ADMINS_ONLY" },
-      } as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.comment.create.mockResolvedValue(BASE_COMMENT as never);
-      prismaMock.post.update.mockResolvedValue({} as never);
-
+      mockCreate({ whoCanPost: "ADMINS_ONLY" }, ADMIN_POST);
       const caller = createCaller(createAdminContext(ADMIN_ID));
       const result = await caller.create({ postId: POST_ID, body: "admin comment" });
       expect(result.id).toBe(COMMENT_ID);
@@ -352,12 +318,7 @@ describe("commentRouter", () => {
   // ---------------------------------------------------------------------------
 
   describe("comments.delete", () => {
-    it("rejects unauthenticated callers", async () => {
-      const caller = createCaller(createTestContext());
-      await expect(caller.delete({ id: COMMENT_ID })).rejects.toThrow(TRPCError);
-    });
-
-    it("author can delete own comment; Post.commentCount is decremented via floor-0 GREATEST", async () => {
+    function mockDeletableComment() {
       prismaMock.comment.findUnique.mockResolvedValue({
         authorId: USER_ID,
         postId: POST_ID,
@@ -366,7 +327,15 @@ describe("commentRouter", () => {
         ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
       );
       prismaMock.comment.delete.mockResolvedValue({} as never);
+    }
 
+    it("rejects unauthenticated callers", async () => {
+      const caller = createCaller(createTestContext());
+      await expect(caller.delete({ id: COMMENT_ID })).rejects.toThrow(TRPCError);
+    });
+
+    it("author can delete own comment; Post.commentCount is decremented via floor-0 GREATEST", async () => {
+      mockDeletableComment();
       const caller = createCaller(createAuthedContext(USER_ID));
       const result = await caller.delete({ id: COMMENT_ID });
       expect(result.id).toBe(COMMENT_ID);
@@ -384,16 +353,8 @@ describe("commentRouter", () => {
     });
 
     it("admin non-author can delete", async () => {
-      prismaMock.comment.findUnique.mockResolvedValue({
-        authorId: USER_ID,
-        postId: POST_ID,
-      } as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.comment.delete.mockResolvedValue({} as never);
+      mockDeletableComment();
       prismaMock.post.update.mockResolvedValue({} as never);
-
       const caller = createCaller(createAdminContext(ADMIN_ID));
       const result = await caller.delete({ id: COMMENT_ID });
       expect(result.id).toBe(COMMENT_ID);

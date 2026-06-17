@@ -1,3 +1,4 @@
+// jscpd:ignore-start
 import { PostStatus } from "@prisma/client";
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
@@ -7,19 +8,11 @@ import { mockReset, type DeepMockProxy } from "vitest-mock-extended";
 import { redis } from "@/lib/redis";
 import { prisma } from "@/server/db";
 import { BASE_POST, BOARD_ID, makeRow, POST_ID, USER_ID } from "@/tests/helpers/post-fixtures";
+import { ADMIN_ID, BASE_BOARD, DEFAULT_SETTINGS, makePipelineMock, type RouterRedisMock } from "@/tests/helpers/router-setup";
 
-const redisMock = redis as unknown as {
-  mget: ReturnType<typeof vi.fn>;
-  exists: ReturnType<typeof vi.fn>;
-  set: ReturnType<typeof vi.fn>;
-  pipeline: ReturnType<typeof vi.fn>;
-};
+const redisMock = redis as unknown as RouterRedisMock;
 
-const pipelineMock = {
-  incr: vi.fn().mockReturnThis(),
-  expire: vi.fn().mockReturnThis(),
-  exec: vi.fn<() => Promise<[Error | null, unknown][]>>(),
-};
+const pipelineMock = makePipelineMock();
 
 vi.mock("@/server/db");
 vi.mock("@/lib/redis", () => ({
@@ -40,29 +33,7 @@ const { createTestContext, createAuthedContext, createAdminContext } = await imp
 );
 
 const createCaller = createCallerFactory(postRouter);
-
-const ADMIN_ID = "cadmin1234567890";
-
-const DEFAULT_SETTINGS = {
-  whoCanPost: "AUTHENTICATED",
-  guestVotingEnabled: false,
-  postModerationEnabled: false,
-};
-
-const BASE_BOARD = {
-  id: BOARD_ID,
-  slug: "test-board",
-  name: "Test Board",
-  description: null,
-  isPublic: true,
-  isListed: true,
-  settingsJson: DEFAULT_SETTINGS,
-  createdAt: new Date("2024-01-01"),
-  ownerId: "owner-1",
-  position: 0,
-  updatedAt: new Date("2024-01-01"),
-  _count: { posts: 0 },
-};
+// jscpd:ignore-end
 
 function mockToggleVotePost(settingsOverrides: Partial<typeof DEFAULT_SETTINGS> = {}) {
   const publicRow = makeRow({
@@ -93,14 +64,20 @@ describe("postRouter", () => {
   // ---------------------------------------------------------------------------
 
   describe("posts.create", () => {
-    it("creates post for authenticated user on AUTHENTICATED board", async () => {
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
+    function mockCreatePost(settingsOverrides?: Partial<typeof DEFAULT_SETTINGS>) {
+      prismaMock.board.findUnique.mockResolvedValue({
+        ...BASE_BOARD,
+        settingsJson: { ...DEFAULT_SETTINGS, ...settingsOverrides },
+      } as never);
       prismaMock.$transaction.mockImplementation(
         ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
       );
       prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
       prismaMock.post.create.mockResolvedValue({ id: POST_ID, postNumber: 1 } as never);
+    }
 
+    it("creates post for authenticated user on AUTHENTICATED board", async () => {
+      mockCreatePost();
       const caller = createCaller(createAuthedContext(USER_ID));
       const result = await caller.create({ boardId: BOARD_ID, title: "Hello world" });
       expect(result.postNumber).toBe(1);
@@ -137,16 +114,7 @@ describe("postRouter", () => {
     });
 
     it("allows guest on ANYONE board with guestName", async () => {
-      prismaMock.board.findUnique.mockResolvedValue({
-        ...BASE_BOARD,
-        settingsJson: { ...DEFAULT_SETTINGS, whoCanPost: "ANYONE" },
-      } as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
-      prismaMock.post.create.mockResolvedValue({ id: POST_ID, postNumber: 1 } as never);
-
+      mockCreatePost({ whoCanPost: "ANYONE" });
       const caller = createCaller(createTestContext());
       const result = await caller.create({
         boardId: BOARD_ID,
@@ -157,16 +125,7 @@ describe("postRouter", () => {
     });
 
     it("creates post with PENDING status when postModerationEnabled", async () => {
-      prismaMock.board.findUnique.mockResolvedValue({
-        ...BASE_BOARD,
-        settingsJson: { ...DEFAULT_SETTINGS, postModerationEnabled: true },
-      } as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
-      prismaMock.post.create.mockResolvedValue({ id: POST_ID, postNumber: 1 } as never);
-
+      mockCreatePost({ postModerationEnabled: true });
       const caller = createCaller(createAuthedContext(USER_ID));
       await caller.create({ boardId: BOARD_ID, title: "Moderated post" });
       expect(prismaMock.post.create).toHaveBeenCalledWith(
@@ -196,13 +155,7 @@ describe("postRouter", () => {
     });
 
     it("creates post with a description", async () => {
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
-      prismaMock.post.create.mockResolvedValue({ id: POST_ID, postNumber: 1 } as never);
-
+      mockCreatePost();
       const caller = createCaller(createAuthedContext(USER_ID));
       await caller.create({ boardId: BOARD_ID, title: "Hello world", description: "Some details" });
       expect(prismaMock.post.create).toHaveBeenCalledWith(
@@ -212,18 +165,13 @@ describe("postRouter", () => {
 
     it("returns CONFLICT when createPost reports a post-number conflict", async () => {
       const { Prisma } = await import("@prisma/client");
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
+      mockCreatePost();
       prismaMock.post.create.mockRejectedValue(
         new Prisma.PrismaClientKnownRequestError("Unique constraint", {
           code: "P2002",
           clientVersion: "5.0.0",
         }),
       );
-
       const caller = createCaller(createAuthedContext(USER_ID));
       await expect(
         caller.create({ boardId: BOARD_ID, title: "Hello world" }),
@@ -231,13 +179,8 @@ describe("postRouter", () => {
     });
 
     it("returns INTERNAL_SERVER_ERROR when createPost fails unexpectedly", async () => {
-      prismaMock.board.findUnique.mockResolvedValue(BASE_BOARD as never);
-      prismaMock.$transaction.mockImplementation(
-        ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
-      );
-      prismaMock.post.aggregate.mockResolvedValue({ _max: { postNumber: null } } as never);
+      mockCreatePost();
       prismaMock.post.create.mockRejectedValue(new Error("db down"));
-
       const caller = createCaller(createAuthedContext(USER_ID));
       await expect(
         caller.create({ boardId: BOARD_ID, title: "Hello world" }),
