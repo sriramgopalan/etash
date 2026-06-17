@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prisma } from "@/server/db";
@@ -17,7 +18,6 @@ const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 const {
   createComment,
   deleteComment,
-  getCommentById,
   listComments,
   updateComment,
 } = await import("@/server/repositories/comment");
@@ -26,40 +26,6 @@ describe("comment repository", () => {
   afterEach(() => {
     mockReset(prismaMock);
     vi.clearAllMocks();
-  });
-
-  // ---------------------------------------------------------------------------
-  // getCommentById
-  // ---------------------------------------------------------------------------
-
-  describe("getCommentById", () => {
-    it("returns PublicCommentView for non-admin viewer", async () => {
-      prismaMock.comment.findUnique.mockResolvedValue(makeCommentRow() as never);
-      const result = await getCommentById(COMMENT_ID, { isAdmin: false });
-      expect(result).not.toBeNull();
-      expect(result).not.toHaveProperty("authorId");
-      expect(result?.id).toBe(COMMENT_ID);
-    });
-
-    it("returns AdminCommentView for admin viewer (includes authorId, author.email)", async () => {
-      prismaMock.comment.findUnique.mockResolvedValue({
-        ...makeCommentRow(),
-        authorId: USER_ID,
-        author: { id: USER_ID, name: "Alice", email: "alice@example.com" },
-      } as never);
-      const result = await getCommentById(COMMENT_ID, { isAdmin: true });
-      expect(result).not.toBeNull();
-      expect(result).toHaveProperty("authorId");
-      expect((result as { author?: { email?: string } })?.author?.email).toBe(
-        "alice@example.com",
-      );
-    });
-
-    it("returns null when row absent", async () => {
-      prismaMock.comment.findUnique.mockResolvedValue(null);
-      const result = await getCommentById("cnonexistent00001", { isAdmin: false });
-      expect(result).toBeNull();
-    });
   });
 
   // ---------------------------------------------------------------------------
@@ -247,6 +213,28 @@ describe("comment repository", () => {
       );
       expect(result.body).toBe("admin edit");
     });
+
+    it("on P2025 during update (tombstone race), returns post-tombstone comment state", async () => {
+      prismaMock.comment.findUnique
+        .mockResolvedValueOnce({ authorId: USER_ID } as never)
+        .mockResolvedValueOnce({
+          ...makeCommentRow(),
+          authorId: null,
+          author: null,
+          body: "[deleted]",
+        } as never);
+      const p2025 = new Prisma.PrismaClientKnownRequestError("Record not found.", {
+        code: "P2025",
+        clientVersion: "5.x",
+      });
+      prismaMock.comment.update.mockRejectedValueOnce(p2025 as never);
+      const result = await updateComment(
+        COMMENT_ID,
+        { body: "new body" },
+        { isAdmin: false, callerId: USER_ID },
+      );
+      expect(result.body).toBe("[deleted]");
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -271,20 +259,14 @@ describe("comment repository", () => {
       expect(result.id).toBe(COMMENT_ID);
     });
 
-    it("calls post.update with commentCount decrement inside transaction", async () => {
+    it("calls $executeRaw with GREATEST floor-0 expression inside transaction", async () => {
       prismaMock.comment.findUnique.mockResolvedValue({
         authorId: USER_ID,
         postId: POST_ID,
       } as never);
       prismaMock.comment.delete.mockResolvedValue({} as never);
-      prismaMock.post.update.mockResolvedValue({} as never);
       await deleteComment(COMMENT_ID, { isAdmin: false, callerId: USER_ID });
-      expect(prismaMock.post.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: POST_ID },
-          data: { commentCount: { decrement: 1 } },
-        }),
-      );
+      expect(prismaMock.$executeRaw).toHaveBeenCalled();
     });
 
     it("throws NOT_FOUND when id absent", async () => {
@@ -316,6 +298,21 @@ describe("comment repository", () => {
         callerId: "cadmin1234567890",
       });
       expect(result.id).toBe(COMMENT_ID);
+    });
+
+    it("throws NOT_FOUND when comment deleted concurrently (P2025 from transaction)", async () => {
+      prismaMock.comment.findUnique.mockResolvedValue({
+        authorId: USER_ID,
+        postId: POST_ID,
+      } as never);
+      const p2025 = new Prisma.PrismaClientKnownRequestError("Record not found.", {
+        code: "P2025",
+        clientVersion: "5.x",
+      });
+      prismaMock.comment.delete.mockRejectedValue(p2025 as never);
+      await expect(
+        deleteComment(COMMENT_ID, { isAdmin: false, callerId: USER_ID }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });
 });

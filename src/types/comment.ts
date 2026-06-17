@@ -23,7 +23,7 @@ export interface CreatedComment {
   updatedAt: Date;
 }
 
-export interface CommentListResult {
-  items: PublicCommentView[];
+export interface CommentListResult<T extends PublicCommentView = PublicCommentView> {
+  items: T[];
   nextCursor: string | null;
 }

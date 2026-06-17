@@ -16,7 +16,7 @@ import {
   toggleVote,
   updatePost,
 } from "@/server/repositories/post";
-import { getViewer, requireBoardVisible } from "@/server/routers/_helpers";
+import { enforceWhoCanPost, getViewer, maskForbiddenAsNotFound, requireBoardVisible } from "@/server/routers/_helpers";
 import {
   adminProcedure,
   applyRateLimit,
@@ -84,31 +84,9 @@ export const postRouter = createTRPCRouter({
     await applyRateLimit(`posts:create:${viewer.hashedIp}`, 10, 3600);
 
     const { settings } = await requireBoardVisible(input.boardId, viewer.isAdmin, "posts.create");
-
     const { whoCanPost, postModerationEnabled } = settings;
 
-    if (whoCanPost === "ADMINS_ONLY" && !viewer.isAdmin) {
-      logger.info({ boardId: input.boardId, userId: viewer.callerId }, "posts.create: ADMINS_ONLY blocked");
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        cause: new AppError("NOT_FOUND", "This board only accepts posts from registered users."),
-      });
-    }
-
-    if (whoCanPost === "AUTHENTICATED" && !viewer.callerId) {
-      logger.info({ boardId: input.boardId }, "posts.create: unauthenticated blocked");
-      throw new TRPCError({
-        code: "UNAUTHORIZED",
-        cause: new AppError("UNAUTHORIZED", "You must be signed in to submit feedback."),
-      });
-    }
-
-    if (!viewer.callerId && !input.guestName) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        cause: new AppError("VALIDATION_ERROR", "A guest name is required."),
-      });
-    }
+    enforceWhoCanPost(whoCanPost, viewer, !!input.guestName, "posts.create");
 
     const initialStatus: PostStatus = postModerationEnabled ? PostStatus.PENDING : PostStatus.OPEN;
 
@@ -187,11 +165,7 @@ export const postRouter = createTRPCRouter({
           throw new TRPCError({ code: "NOT_FOUND", cause: e });
         }
         if (e.code === "FORBIDDEN") {
-          logger.warn({ postId: id, userId: callerId }, "posts.update: not author");
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            cause: new AppError("NOT_FOUND", "Post not found."),
-          });
+          maskForbiddenAsNotFound(e, id, callerId, "posts.update");
         }
         if (e.code === "VALIDATION_ERROR") {
           logger.info({ postId: id, userId: callerId, status: (e.meta as { status?: PostStatus } | undefined)?.status }, "posts.update: locked status");

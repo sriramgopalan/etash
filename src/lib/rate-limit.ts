@@ -14,10 +14,11 @@ export async function rateLimit(
   opts: RateLimitOptions,
 ): Promise<void> {
   const redisKey = `rl:${key}`;
-  const count = await redis.incr(redisKey);
-  if (count === 1) {
-    await redis.expire(redisKey, opts.windowSeconds);
-  }
+  const pipeline = redis.pipeline();
+  pipeline.incr(redisKey);
+  pipeline.expire(redisKey, opts.windowSeconds, "NX");
+  const results = await pipeline.exec();
+  const count = results?.[0]?.[1] as number;
   if (count > opts.max) {
     throw new AppError(
       "RATE_LIMITED",

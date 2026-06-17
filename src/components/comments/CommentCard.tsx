@@ -19,7 +19,7 @@ export function CommentCard({ comment, callerId, isAdmin, onDeleted }: Props) {
 
   const utils = api.useUtils();
 
-  const canEdit = isAdmin || (!!callerId && callerId === (comment as { authorId?: string }).authorId);
+  const canEdit = isAdmin || (!!callerId && callerId === comment.author?.id);
 
   const updateMutation = api.comments.update.useMutation({
     onSuccess() {

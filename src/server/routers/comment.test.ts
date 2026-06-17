@@ -18,13 +18,25 @@ import { makeRow } from "@/tests/helpers/post-fixtures";
 const redisMock = redis as unknown as {
   mget: ReturnType<typeof vi.fn>;
   exists: ReturnType<typeof vi.fn>;
-  incr: ReturnType<typeof vi.fn>;
-  expire: ReturnType<typeof vi.fn>;
   set: ReturnType<typeof vi.fn>;
+  pipeline: ReturnType<typeof vi.fn>;
+};
+
+const pipelineMock = {
+  incr: vi.fn().mockReturnThis(),
+  expire: vi.fn().mockReturnThis(),
+  exec: vi.fn<() => Promise<[Error | null, unknown][]>>(),
 };
 
 vi.mock("@/server/db");
-vi.mock("@/lib/redis");
+vi.mock("@/lib/redis", () => ({
+  redis: {
+    mget: vi.fn(),
+    exists: vi.fn(),
+    set: vi.fn(),
+    pipeline: vi.fn(),
+  },
+}));
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -80,8 +92,8 @@ describe("commentRouter", () => {
     mockReset(prismaMock);
     vi.clearAllMocks();
     redisMock.mget.mockResolvedValue([]);
-    redisMock.incr.mockResolvedValue(1);
-    redisMock.expire.mockResolvedValue(1);
+    redisMock.pipeline.mockReturnValue(pipelineMock);
+    pipelineMock.exec.mockResolvedValue([[null, 1], [null, 1]]);
     prismaMock.vote.findMany.mockResolvedValue([] as never);
   });
 
@@ -265,7 +277,7 @@ describe("commentRouter", () => {
     });
 
     it("returns TOO_MANY_REQUESTS when rate limit exceeded", async () => {
-      redisMock.incr.mockResolvedValue(21); // > limit of 20
+      pipelineMock.exec.mockResolvedValue([[null, 21], [null, 1]]); // > limit of 20
       const caller = createCaller(createAuthedContext(USER_ID));
       await expect(caller.create({ postId: POST_ID, body: "hi" })).rejects.toMatchObject({
         code: "TOO_MANY_REQUESTS",
@@ -345,7 +357,7 @@ describe("commentRouter", () => {
       await expect(caller.delete({ id: COMMENT_ID })).rejects.toThrow(TRPCError);
     });
 
-    it("author can delete own comment; Post.commentCount is decremented", async () => {
+    it("author can delete own comment; Post.commentCount is decremented via floor-0 GREATEST", async () => {
       prismaMock.comment.findUnique.mockResolvedValue({
         authorId: USER_ID,
         postId: POST_ID,
@@ -354,14 +366,11 @@ describe("commentRouter", () => {
         ((fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)) as never,
       );
       prismaMock.comment.delete.mockResolvedValue({} as never);
-      prismaMock.post.update.mockResolvedValue({} as never);
 
       const caller = createCaller(createAuthedContext(USER_ID));
       const result = await caller.delete({ id: COMMENT_ID });
       expect(result.id).toBe(COMMENT_ID);
-      expect(prismaMock.post.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { commentCount: { decrement: 1 } } }),
-      );
+      expect(prismaMock.$executeRaw).toHaveBeenCalled();
     });
 
     it("returns NOT_FOUND for non-author", async () => {

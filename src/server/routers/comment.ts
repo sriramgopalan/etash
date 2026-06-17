@@ -11,7 +11,7 @@ import {
   updateComment,
 } from "@/server/repositories/comment";
 import { getPostById } from "@/server/repositories/post";
-import { getViewer, requireBoardVisible } from "@/server/routers/_helpers";
+import { enforceWhoCanPost, getViewer, maskForbiddenAsNotFound, requireBoardVisible } from "@/server/routers/_helpers";
 import {
   applyRateLimit,
   createTRPCRouter,
@@ -24,6 +24,17 @@ import type { PublicCommentView } from "@/types/comment";
 // Input schemas
 // ---------------------------------------------------------------------------
 
+const commentBodySchema = z
+  .string()
+  .trim()
+  .transform((v) => stripHtml(v))
+  .pipe(
+    z
+      .string()
+      .min(1, "Comment cannot be empty.")
+      .max(2000, "Comment must be 2 000 characters or fewer."),
+  );
+
 const ListCommentsInput = z
   .object({
     postId: z.string().cuid(),
@@ -35,16 +46,17 @@ const ListCommentsInput = z
 const CreateCommentInput = z
   .object({
     postId: z.string().cuid(),
-    body: z
-      .string()
-      .trim()
-      .min(1, "Comment cannot be empty.")
-      .max(2000, "Comment must be 2 000 characters or fewer."),
+    body: commentBodySchema,
     guestName: z
       .string()
       .trim()
-      .min(2, "Guest name must be at least 2 characters.")
-      .max(50, "Guest name must be 50 characters or fewer.")
+      .transform((v) => stripHtml(v))
+      .pipe(
+        z
+          .string()
+          .min(2, "Guest name must be at least 2 characters.")
+          .max(50, "Guest name must be 50 characters or fewer."),
+      )
       .optional(),
   })
   .strict();
@@ -52,11 +64,7 @@ const CreateCommentInput = z
 const UpdateCommentInput = z
   .object({
     id: z.string().cuid(),
-    body: z
-      .string()
-      .trim()
-      .min(1, "Comment cannot be empty.")
-      .max(2000, "Comment must be 2 000 characters or fewer."),
+    body: commentBodySchema,
   })
   .strict();
 
@@ -107,43 +115,21 @@ export const commentRouter = createTRPCRouter({
       });
     }
 
-    const { settings } = await requireBoardVisible(
-      post.boardId,
-      viewer.isAdmin,
-      "comments.create",
-    );
-    const { whoCanPost } = settings;
-
-    if (whoCanPost === "ADMINS_ONLY" && !viewer.isAdmin) {
-      logger.info({ postId: input.postId }, "comments.create: ADMINS_ONLY blocked");
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        cause: new AppError("NOT_FOUND", "This board doesn't exist."),
-      });
-    }
-
-    if (whoCanPost === "AUTHENTICATED" && !viewer.callerId) {
-      logger.info({ postId: input.postId }, "comments.create: unauthenticated blocked");
-      throw new TRPCError({
-        code: "UNAUTHORIZED",
-        cause: new AppError("UNAUTHORIZED", "You must be signed in to comment."),
-      });
-    }
-
-    if (!viewer.callerId && !input.guestName) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        cause: new AppError("VALIDATION_ERROR", "A guest name is required."),
-      });
-    }
+    const { settings } = await requireBoardVisible(post.boardId, viewer.isAdmin, "comments.create");
+    enforceWhoCanPost(settings.whoCanPost, viewer, !!input.guestName, "comments.create");
 
     try {
-      return await createComment({
+      const created = await createComment({
         postId: input.postId,
         authorId: viewer.callerId ?? null,
-        guestName: input.guestName ? stripHtml(input.guestName) : null,
-        body: stripHtml(input.body),
+        guestName: viewer.callerId ? null : (input.guestName ?? null),
+        body: input.body,
       });
+      if (!viewer.isAdmin) {
+        const { id, postId, guestName, body, createdAt, updatedAt } = created;
+        return { id, postId, guestName, body, createdAt, updatedAt };
+      }
+      return created;
     } catch (e) {
       logger.error({ err: e, postId: input.postId }, "comments.create: db error");
       throw new TRPCError({
@@ -161,7 +147,7 @@ export const commentRouter = createTRPCRouter({
     try {
       const comment = await updateComment(
         input.id,
-        { body: stripHtml(input.body) },
+        { body: input.body },
         { isAdmin: viewer.isAdmin, callerId },
       );
 
@@ -178,11 +164,7 @@ export const commentRouter = createTRPCRouter({
           throw new TRPCError({ code: "NOT_FOUND", cause: e });
         }
         if (e.code === "FORBIDDEN") {
-          logger.warn({ commentId: input.id, userId: callerId }, "comments.update: not author");
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            cause: new AppError("NOT_FOUND", "Comment not found."),
-          });
+          maskForbiddenAsNotFound(e, input.id, callerId, "comments.update");
         }
       }
       logger.error({ err: e, commentId: input.id }, "comments.update: db error");
@@ -209,11 +191,7 @@ export const commentRouter = createTRPCRouter({
             throw new TRPCError({ code: "NOT_FOUND", cause: e });
           }
           if (e.code === "FORBIDDEN") {
-            logger.warn({ commentId: input.id, userId: callerId }, "comments.delete: not author");
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              cause: new AppError("NOT_FOUND", "Comment not found."),
-            });
+            maskForbiddenAsNotFound(e, input.id, callerId, "comments.delete");
           }
         }
         logger.error({ err: e, commentId: input.id }, "comments.delete: db error");

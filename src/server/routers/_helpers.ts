@@ -39,3 +39,44 @@ export async function requireBoardVisible(
   }
   return { settings: board.settings, isPublic: board.isPublic };
 }
+
+export function enforceWhoCanPost(
+  whoCanPost: BoardSettings["whoCanPost"],
+  viewer: PostViewer,
+  hasGuestName: boolean,
+  context: string,
+): void {
+  if (whoCanPost === "ADMINS_ONLY" && !viewer.isAdmin) {
+    logger.info({ context }, `${context}: ADMINS_ONLY blocked`);
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      cause: new AppError("NOT_FOUND", "This board only accepts posts from registered users."),
+    });
+  }
+  if (whoCanPost === "AUTHENTICATED" && !viewer.callerId) {
+    logger.info({ context }, `${context}: unauthenticated blocked`);
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      cause: new AppError("UNAUTHORIZED", "You must be signed in to post."),
+    });
+  }
+  if (!viewer.callerId && !hasGuestName) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      cause: new AppError("VALIDATION_ERROR", "A guest name is required."),
+    });
+  }
+}
+
+export function maskForbiddenAsNotFound(
+  e: unknown,
+  resourceId: string,
+  userId: string,
+  context: string,
+): never {
+  logger.warn({ resourceId, userId, err: e }, `${context}: not author`);
+  throw new TRPCError({
+    code: "NOT_FOUND",
+    cause: new AppError("NOT_FOUND", "Not found."),
+  });
+}

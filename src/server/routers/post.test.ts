@@ -8,10 +8,28 @@ import { redis } from "@/lib/redis";
 import { prisma } from "@/server/db";
 import { BASE_POST, BOARD_ID, makeRow, POST_ID, USER_ID } from "@/tests/helpers/post-fixtures";
 
-const redisMock = redis as unknown as { mget: ReturnType<typeof vi.fn>; exists: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> };
+const redisMock = redis as unknown as {
+  mget: ReturnType<typeof vi.fn>;
+  exists: ReturnType<typeof vi.fn>;
+  set: ReturnType<typeof vi.fn>;
+  pipeline: ReturnType<typeof vi.fn>;
+};
+
+const pipelineMock = {
+  incr: vi.fn().mockReturnThis(),
+  expire: vi.fn().mockReturnThis(),
+  exec: vi.fn<() => Promise<[Error | null, unknown][]>>(),
+};
 
 vi.mock("@/server/db");
-vi.mock("@/lib/redis");
+vi.mock("@/lib/redis", () => ({
+  redis: {
+    mget: vi.fn(),
+    exists: vi.fn(),
+    set: vi.fn(),
+    pipeline: vi.fn(),
+  },
+}));
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
@@ -66,6 +84,8 @@ describe("postRouter", () => {
     vi.clearAllMocks();
     redisMock.mget.mockResolvedValue([]);
     redisMock.exists.mockResolvedValue(0);
+    redisMock.pipeline.mockReturnValue(pipelineMock);
+    pipelineMock.exec.mockResolvedValue([[null, 1], [null, 1]]);
   });
 
   // ---------------------------------------------------------------------------
