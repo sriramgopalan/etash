@@ -1,9 +1,10 @@
-import { MessageSquare, Pin } from "lucide-react";
+import { Pin } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { auth } from "@/auth";
+import { CommentList } from "@/components/comments/CommentList";
 import { StatusBadge } from "@/components/posts/StatusBadge";
 import { VoteButton } from "@/components/posts/VoteButton";
 import { getPostByNumber } from "@/server/repositories/post";
@@ -30,6 +31,7 @@ export default async function PostDetailPage({ params }: Props) {
   const session = await auth();
   const isAdmin = session?.user?.role === "ADMIN";
   const callerId = session?.user?.id;
+  const isSignedIn = !!session?.user;
 
   const post = await getPostByNumber(slug, num, { isAdmin, callerId });
   if (!post) notFound();
@@ -103,13 +105,21 @@ export default async function PostDetailPage({ params }: Props) {
       </article>
 
       <section
-        aria-label="Comments"
-        className="mt-6 rounded-xl border border-dashed border-gray-200 p-6"
+        aria-labelledby="comments-heading"
+        className="mt-6 rounded-xl border border-gray-200 bg-white p-6"
       >
-        <div className="flex items-center gap-2 text-gray-400">
-          <MessageSquare className="h-4 w-4" aria-hidden="true" />
-          <p className="text-sm">Comments coming soon</p>
-        </div>
+        <h2
+          id="comments-heading"
+          className="mb-4 text-base font-semibold text-gray-900"
+        >
+          Comments
+        </h2>
+        <CommentList
+          postId={post.id}
+          callerId={callerId}
+          isAdmin={isAdmin}
+          isSignedIn={isSignedIn}
+        />
       </section>
 
       {isAdmin && (

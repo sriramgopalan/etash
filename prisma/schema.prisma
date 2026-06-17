@@ -42,6 +42,7 @@ model User {
   boards      Board[]
   posts       Post[]
   votes       Vote[]
+  comments    Comment[]
 
   @@index([email])
   @@index([lockedUntil])
@@ -145,13 +146,15 @@ model Post {
   status      PostStatus @default(OPEN)
   isPinned    Boolean    @default(false)
   pinnedAt    DateTime?
-  voteCount   Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  voteCount    Int        @default(0)
+  commentCount Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  board  Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  author User?  @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  votes  Vote[]
+  board    Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  votes    Vote[]
+  comments Comment[]
 
   @@unique([boardId, postNumber])
   @@index([boardId, status])
@@ -162,6 +165,22 @@ model Post {
   @@index([boardId, status, voteCount])
   @@index([boardId, isPinned, voteCount])
   // GIN trigram index on title (pg_trgm) managed via migration SQL — not declarable in Prisma schema
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String? // PII: references User.id; nulled (SetNull) when author account is deleted
+  guestName String? // PII: display name supplied by unauthenticated commenters
+  body      String   @db.Text // PII: free-text; overwritten with "[deleted]" on author account deletion
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post   Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([postId, createdAt])
+  @@index([authorId])
 }
 
 model Vote {

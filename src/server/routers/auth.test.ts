@@ -10,7 +10,7 @@ import { makeFullRedisMock } from "@/tests/helpers/auth-setup";
 
 let prismaMock: DeepMockProxy<PrismaClient>;
 
-const redisMock = makeFullRedisMock();
+const { redisMock, pipelineMock } = makeFullRedisMock();
 
 vi.mock("@/server/db", async () => {
   const { mockDeep } = await import("vitest-mock-extended");
@@ -64,8 +64,7 @@ describe("authRouter", () => {
     mockReset(prismaMock);
     vi.clearAllMocks();
     // Default: rate limit passes
-    redisMock.incr.mockResolvedValue(1);
-    redisMock.expire.mockResolvedValue(1);
+    pipelineMock.exec.mockResolvedValue([[null, 1], [null, 1]]);
   });
 
   describe("requestMagicLink", () => {
@@ -102,7 +101,7 @@ describe("authRouter", () => {
     });
 
     it("throws when rate limited", async () => {
-      redisMock.incr.mockResolvedValue(11);
+      pipelineMock.exec.mockResolvedValue([[null, 11], [null, 1]]);
 
       const caller = createCaller({ session: null, ip: "127.0.0.1" });
       await expect(

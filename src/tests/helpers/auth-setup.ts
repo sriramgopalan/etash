@@ -12,9 +12,14 @@ export function makeRedisMock() {
 }
 
 export function makeFullRedisMock() {
-  return {
-    incr: vi.fn<() => Promise<number>>(),
-    expire: vi.fn<() => Promise<number>>(),
+  const pipelineMock = {
+    incr: vi.fn().mockReturnThis(),
+    expire: vi.fn().mockReturnThis(),
+    exec: vi.fn<() => Promise<[Error | null, unknown][]>>(),
+  };
+  const redisMock = {
+    pipeline: vi.fn(() => pipelineMock),
     ...makeRedisMock(),
   };
+  return { redisMock, pipelineMock };
 }
