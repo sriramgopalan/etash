@@ -11,11 +11,13 @@ interface UserTableProps {
   page: number;
   totalPages: number;
   search?: string;
+  currentUserId: string;
 }
 
-export function UserTable({ initialUsers, total, page, totalPages, search }: UserTableProps) {
+export function UserTable({ initialUsers, total, page, totalPages, search, currentUserId }: UserTableProps) {
   const [users, setUsers] = useState(initialUsers);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [demoteConfirmId, setDemoteConfirmId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId: string; email: string } | null>(null);
   const [deleteEmailInput, setDeleteEmailInput] = useState("");
 
@@ -24,6 +26,8 @@ export function UserTable({ initialUsers, total, page, totalPages, search }: Use
   const updateRole = api.admin.updateUserRole.useMutation({
     onSuccess: () => {
       void utils.admin.listUsers.invalidate();
+      setDemoteConfirmId(null);
+      setPendingAction(null);
     },
   });
 
@@ -77,104 +81,159 @@ export function UserTable({ initialUsers, total, page, totalPages, search }: Use
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {users.map((user) => (
-              <tr key={user.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-gray-900">{user.name ?? "—"}</div>
-                  <div className="text-xs text-gray-400">{user.email}</div>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      user.role === "ADMIN"
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
-                  >
-                    {user.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {user.suspendedAt ? (
-                    <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
-                      Suspended
+            {users.map((user) => {
+              const isSelf = user.id === currentUserId;
+              const isTargetAdmin = user.role === "ADMIN";
+              const isPending = pendingAction === user.id;
+              const awaitingDemoteConfirm = demoteConfirmId === user.id;
+
+              return (
+                <tr key={user.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">
+                      {user.name ?? "—"}
+                      {isSelf && (
+                        <span className="ml-1.5 text-xs text-gray-400">(you)</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-400">{user.email}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        user.role === "ADMIN"
+                          ? "bg-purple-100 text-purple-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {user.role}
                     </span>
-                  ) : (
-                    <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                      Active
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-500">
-                  {new Date(user.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end gap-2">
-                    {user.role !== "ADMIN" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingAction(user.id);
-                          updateRole.mutate({ userId: user.id, role: "ADMIN" });
-                        }}
-                        disabled={pendingAction === user.id}
-                        className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                      >
-                        Make admin
-                      </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.suspendedAt ? (
+                      <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                        Suspended
+                      </span>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                        Active
+                      </span>
                     )}
-                    {user.role === "ADMIN" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingAction(user.id);
-                          updateRole.mutate({ userId: user.id, role: "MEMBER" });
-                        }}
-                        disabled={pendingAction === user.id}
-                        className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-                      >
-                        Demote
-                      </button>
-                    )}
-                    {!user.suspendedAt && user.role !== "ADMIN" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingAction(user.id);
-                          suspend.mutate({ userId: user.id });
-                        }}
-                        disabled={pendingAction === user.id}
-                        className="rounded px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50"
-                      >
-                        Suspend
-                      </button>
-                    )}
-                    {user.suspendedAt && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingAction(user.id);
-                          unsuspend.mutate({ userId: user.id });
-                        }}
-                        disabled={pendingAction === user.id}
-                        className="rounded px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 disabled:opacity-50"
-                      >
-                        Unsuspend
-                      </button>
-                    )}
-                    {user.role !== "ADMIN" && (
-                      <button
-                        type="button"
-                        onClick={() => setDeleteConfirm({ userId: user.id, email: user.email })}
-                        className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {new Date(user.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex justify-end gap-2">
+                        {/* Make admin — only for non-admins, never for self */}
+                        {!isTargetAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingAction(user.id);
+                              updateRole.mutate({ userId: user.id, role: "ADMIN" });
+                            }}
+                            disabled={isPending || isSelf}
+                            title={isSelf ? "You cannot modify your own account" : undefined}
+                            className="rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Make admin
+                          </button>
+                        )}
+
+                        {/* Demote — only for admins */}
+                        {isTargetAdmin && (
+                          awaitingDemoteConfirm ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-gray-500">Demote?</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPendingAction(user.id);
+                                  updateRole.mutate({ userId: user.id, role: "MEMBER" });
+                                }}
+                                disabled={isPending}
+                                className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDemoteConfirmId(null)}
+                                className="rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDemoteConfirmId(user.id)}
+                              disabled={isPending || isSelf}
+                              title={
+                                isSelf
+                                  ? "You cannot demote your own account"
+                                  : "Demoting an admin will revoke their access immediately"
+                              }
+                              className="rounded px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              Demote
+                            </button>
+                          )
+                        )}
+
+                        {/* Suspend — hidden for admins and self */}
+                        {!user.suspendedAt && !isTargetAdmin && !isSelf && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingAction(user.id);
+                              suspend.mutate({ userId: user.id });
+                            }}
+                            disabled={isPending}
+                            className="rounded px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50"
+                          >
+                            Suspend
+                          </button>
+                        )}
+
+                        {/* Unsuspend */}
+                        {user.suspendedAt && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingAction(user.id);
+                              unsuspend.mutate({ userId: user.id });
+                            }}
+                            disabled={isPending}
+                            className="rounded px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 disabled:opacity-50"
+                          >
+                            Unsuspend
+                          </button>
+                        )}
+
+                        {/* Delete — hidden for admins */}
+                        {!isTargetAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirm({ userId: user.id, email: user.email })}
+                            className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Contextual hint for self-row */}
+                      {isSelf && (
+                        <p className="text-xs text-gray-400">Your account cannot be modified here</p>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

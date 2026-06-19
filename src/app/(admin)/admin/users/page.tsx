@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { auth } from "@/auth";
 import { UserTable } from "@/components/admin/UserTable";
 import { listAdminUsers } from "@/server/repositories/admin";
 
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export default async function AdminUsersPage({ searchParams }: Props) {
-  const params = await searchParams;
+  const [params, session] = await Promise.all([searchParams, auth()]);
   const page = Math.max(1, parseInt(params.page ?? "1", 10) || 1);
   const search = params.search?.trim();
 
@@ -38,6 +39,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
         page={result.page}
         totalPages={result.totalPages}
         search={search}
+        currentUserId={session?.user?.id ?? ""}
       />
     </main>
   );
