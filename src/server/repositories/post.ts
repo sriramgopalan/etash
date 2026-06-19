@@ -489,6 +489,11 @@ async function applyIdempotentUpdate<T, R>(
   return updateFn();
 }
 
+export async function getPostAuthorId(postId: string): Promise<string | null> {
+  const row = await prisma.post.findUnique({ where: { id: postId }, select: { authorId: true } });
+  return row?.authorId ?? null;
+}
+
 export async function setPostStatus(
   id: string,
   status: PostStatus,

@@ -46,9 +46,8 @@ export function PostCard({ post, boardSlug }: Props) {
         )}
 
         <p className="mt-2 text-xs text-gray-400">
-          #{post.postNumber} · {new Date(post.createdAt).toLocaleDateString()}
-          {post.author?.name && ` · ${post.author.name}`}
-          {!post.author && post.guestName && ` · ${post.guestName}`}
+          #{post.postNumber} · {new Date(post.createdAt).toLocaleDateString()} ·{" "}
+          {post.author?.name ?? post.guestName ?? "Anonymous"}
         </p>
       </div>
     </article>

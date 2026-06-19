@@ -5,9 +5,11 @@ import { notFound } from "next/navigation";
 
 import { auth } from "@/auth";
 import { CommentList } from "@/components/comments/CommentList";
+import { AdminPostActions } from "@/components/posts/AdminPostActions";
+import { EditPostForm } from "@/components/posts/EditPostForm";
 import { StatusBadge } from "@/components/posts/StatusBadge";
 import { VoteButton } from "@/components/posts/VoteButton";
-import { getPostByNumber } from "@/server/repositories/post";
+import { getPostAuthorId, getPostByNumber } from "@/server/repositories/post";
 import type { AdminPostView } from "@/types/post";
 
 interface Props {
@@ -37,6 +39,15 @@ export default async function PostDetailPage({ params }: Props) {
   if (!post) notFound();
 
   const adminPost = isAdmin ? (post as AdminPostView) : null;
+
+  // Determine if the caller is the post author.
+  // For admins, authorId is in the AdminPostView; for authenticated non-admins, fetch it.
+  const authorId = isAdmin
+    ? (post as AdminPostView).authorId
+    : callerId
+      ? await getPostAuthorId(post.id)
+      : null;
+  const isAuthor = !!callerId && callerId === authorId;
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
@@ -102,6 +113,16 @@ export default async function PostDetailPage({ params }: Props) {
             <p className="whitespace-pre-wrap text-sm text-gray-700">{post.description}</p>
           </div>
         )}
+
+        {(isAuthor || isAdmin) && (
+          <EditPostForm
+            postId={post.id}
+            initialTitle={post.title}
+            initialDescription={post.description}
+            status={post.status}
+            isAdmin={isAdmin}
+          />
+        )}
       </article>
 
       <section
@@ -129,11 +150,15 @@ export default async function PostDetailPage({ params }: Props) {
         >
           <h2
             id="admin-actions-heading"
-            className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500"
+            className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500"
           >
             Admin actions
           </h2>
-          <p className="text-sm text-gray-400">Status management coming soon</p>
+          <AdminPostActions
+            postId={post.id}
+            status={post.status}
+            isPinned={post.isPinned}
+          />
         </section>
       )}
 

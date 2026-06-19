@@ -18,26 +18,46 @@ interface Props {
 export function CommentList({ postId, callerId, isAdmin, isSignedIn }: Props) {
   const utils = api.useUtils();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [extraComments, setExtraComments] = useState<PublicCommentView[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const { data, isLoading, error } = api.comments.list.useQuery({ postId, limit: 50 });
+  const { data, isLoading, error } = api.comments.list.useQuery({ postId, limit: 20 });
 
-  const comments = ((data?.items ?? []) as PublicCommentView[]).filter(
-    (c) => !deletedIds.has(c.id),
-  );
+  // Sync cursor and reset accumulated pages whenever the first page refreshes
+  useEffect(() => {
+    if (data) {
+      setExtraComments([]);
+      setNextCursor(data.nextCursor);
+      setDeletedIds(new Set());
+    }
+  }, [data]);
+
+  const firstPage = (data?.items ?? []) as PublicCommentView[];
+  const allComments = [...firstPage, ...extraComments].filter((c) => !deletedIds.has(c.id));
 
   function handleDeleted(id: string) {
     setDeletedIds((prev) => new Set([...prev, id]));
   }
 
   function handleCommentCreated() {
+    setExtraComments([]);
+    setNextCursor(null);
     setDeletedIds(new Set());
     void utils.comments.list.invalidate({ postId });
   }
 
-  // Reset deletedIds when data refreshes (invalidation-triggered refetch)
-  useEffect(() => {
-    setDeletedIds(new Set());
-  }, [data]);
+  async function handleLoadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await utils.comments.list.fetch({ postId, limit: 20, cursor: nextCursor });
+      setExtraComments((prev) => [...prev, ...(result.items as PublicCommentView[])]);
+      setNextCursor(result.nextCursor);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -59,11 +79,11 @@ export function CommentList({ postId, callerId, isAdmin, isSignedIn }: Props) {
 
   return (
     <div className="space-y-4">
-      {comments.length === 0 ? (
+      {allComments.length === 0 ? (
         <p className="text-sm text-gray-400">No comments yet. Be the first to comment.</p>
       ) : (
         <div className="space-y-3">
-          {comments.map((comment) => (
+          {allComments.map((comment) => (
             <CommentCard
               key={comment.id}
               comment={comment}
@@ -72,6 +92,19 @@ export function CommentList({ postId, callerId, isAdmin, isSignedIn }: Props) {
               onDeleted={handleDeleted}
             />
           ))}
+        </div>
+      )}
+
+      {nextCursor && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => void handleLoadMore()}
+            disabled={loadingMore}
+            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : "Load more comments"}
+          </button>
         </div>
       )}
 
