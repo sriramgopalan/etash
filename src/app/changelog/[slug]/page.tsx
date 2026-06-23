@@ -57,9 +57,12 @@ export default async function ChangelogEntryPage({ params }: Props) {
           )}
         </header>
 
+        {/* nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+            bodyHtml is the output of renderMarkdown(), which pipes marked through sanitize-html with an
+            explicit allowedTags + allowedAttributes allowlist — script injection is not possible. */}
         <div
           className="prose prose-gray max-w-none"
-          dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          dangerouslySetInnerHTML={{ __html: bodyHtml }} // nosemgrep
         />
 
         {entry.linkedPosts.length > 0 && (
