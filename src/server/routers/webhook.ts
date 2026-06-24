@@ -4,13 +4,13 @@ import { z } from "zod";
 import { AppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { testWebhookDelivery } from "@/lib/webhook";
-import { prisma } from "@/server/db";
 import {
   createWebhook,
   deleteWebhook,
+  getWebhookForDelivery,
   listWebhooks,
 } from "@/server/repositories/webhook";
-import { adminProcedure, createTRPCRouter } from "@/server/trpc";
+import { adminProcedure, applyRateLimit, createTRPCRouter } from "@/server/trpc";
 import type { WebhookEvent } from "@/types/webhook";
 import { WEBHOOK_EVENTS } from "@/types/webhook";
 
@@ -20,7 +20,11 @@ import { WEBHOOK_EVENTS } from "@/types/webhook";
 
 const CreateWebhookInput = z
   .object({
-    url: z.string().url("Must be a valid URL.").max(500, "URL must be 500 characters or fewer."),
+    url: z
+      .string()
+      .url("Must be a valid URL.")
+      .max(500, "URL must be 500 characters or fewer.")
+      .refine((u) => new URL(u).protocol === "https:", "Only HTTPS URLs are allowed."),
     events: z
       .array(z.enum(WEBHOOK_EVENTS as [string, ...string[]]))
       .min(1, "At least one event must be selected.")
@@ -89,10 +93,8 @@ export const webhookRouter = createTRPCRouter({
   test: adminProcedure
     .input(z.object({ id: z.string().cuid() }).strict())
     .mutation(async ({ input, ctx }) => {
-      const row = await prisma.webhook.findUnique({
-        where: { id: input.id },
-        select: { id: true, url: true, secret: true },
-      });
+      await applyRateLimit(`webhooks:test:${ctx.session.user.id}`, 10, 60);
+      const row = await getWebhookForDelivery(input.id);
       if (!row) {
         throw new TRPCError({
           code: "NOT_FOUND",

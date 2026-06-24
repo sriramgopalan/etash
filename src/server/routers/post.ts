@@ -29,6 +29,7 @@ import {
   protectedProcedure,
   publicProcedure,
 } from "@/server/trpc";
+import type { PostCreatedData, PostStatusChangedData } from "@/types/webhook";
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -122,15 +123,20 @@ export const postRouter = createTRPCRouter({
         description: input.description ? stripHtml(input.description) : null,
         initialStatus,
       });
-      dispatchWebhook("post.created", {
-        id: result.id,
-        postNumber: result.postNumber,
-        boardId: result.boardId,
-        title: result.title,
-        status: result.status,
-        authorId: result.authorId,
-        createdAt: result.createdAt,
-      }).catch((err: unknown) => logger.error({ err, postId: result.id }, "webhook dispatch failed"));
+      if (result.status !== PostStatus.PENDING) {
+        const postCreatedPayload: PostCreatedData = {
+          id: result.id,
+          postNumber: result.postNumber,
+          boardId: result.boardId,
+          title: result.title,
+          status: result.status,
+          authorId: result.authorId,
+          createdAt: result.createdAt,
+        };
+        dispatchWebhook("post.created", postCreatedPayload).catch(
+          (err: unknown) => logger.error({ err, postId: result.id }, "webhook dispatch failed"),
+        );
+      }
       return result;
     } catch (e) {
       if (e instanceof AppError) {
@@ -297,14 +303,17 @@ export const postRouter = createTRPCRouter({
         );
       }
       if (post.status !== post.previousStatus) {
-        dispatchWebhook("post.status_changed", {
+        const statusChangedPayload: PostStatusChangedData = {
           id: post.id,
           postNumber: post.postNumber,
           boardId: post.boardId,
           title: post.title,
           previousStatus: post.previousStatus,
           status: post.status,
-        }).catch((err: unknown) => logger.error({ err, postId: input.id }, "webhook dispatch failed"));
+        };
+        dispatchWebhook("post.status_changed", statusChangedPayload).catch(
+          (err: unknown) => logger.error({ err, postId: input.id }, "webhook dispatch failed"),
+        );
       }
       return post;
     }),

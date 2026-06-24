@@ -6,6 +6,12 @@ export const WEBHOOK_EVENTS: WebhookEvent[] = [
   "comment.created",
 ];
 
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  secret: string;
+}
+
 export interface WebhookListItem {
   id: string;
   url: string;

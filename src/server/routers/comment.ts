@@ -1,3 +1,4 @@
+import { PostStatus } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -20,6 +21,7 @@ import {
   publicProcedure,
 } from "@/server/trpc";
 import type { PublicCommentView } from "@/types/comment";
+import type { CommentCreatedData } from "@/types/webhook";
 
 // ---------------------------------------------------------------------------
 // Input schemas
@@ -126,13 +128,18 @@ export const commentRouter = createTRPCRouter({
         guestName: viewer.callerId ? null : (input.guestName ?? null),
         body: input.body,
       });
-      dispatchWebhook("comment.created", {
-        id: created.id,
-        postId: created.postId,
-        authorId: created.authorId ?? null,
-        body: created.body,
-        createdAt: created.createdAt,
-      }).catch((err: unknown) => logger.error({ err, commentId: created.id }, "webhook dispatch failed"));
+      if (post.status !== PostStatus.PENDING) {
+        const commentCreatedPayload: CommentCreatedData = {
+          id: created.id,
+          postId: created.postId,
+          authorId: created.authorId ?? null,
+          body: created.body,
+          createdAt: created.createdAt,
+        };
+        dispatchWebhook("comment.created", commentCreatedPayload).catch(
+          (err: unknown) => logger.error({ err, commentId: created.id }, "webhook dispatch failed"),
+        );
+      }
 
       if (!viewer.isAdmin) {
         const { id, postId, guestName, body, createdAt, updatedAt } = created;
