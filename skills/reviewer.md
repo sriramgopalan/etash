@@ -10,18 +10,19 @@ with the actual content, and paste into a new Claude Chat session.
 
 ## Mandatory review schedule
 
-After **every gap PR is merged to main**, run Templates 2 and 3 (Security and
-DRY) against all new code introduced by that gap — before starting the next
-gap. This is not optional. Do not proceed to the next gap until both reviews
-are complete and all findings are resolved.
+After **every gap PR is merged to main**, run Templates 2, 3, and 4 (Security,
+DRY, and Spec Audit) against all new code introduced by that gap — before
+starting the next gap. This is not optional. Do not proceed to the next gap
+until all three reviews are complete and all findings are resolved.
 
 Steps:
 1. Gap PR merges → `git checkout main && git pull`
 2. Run Security Review (Template 2) on all new/modified files
 3. Run DRY Review (Template 3) on all new/modified files
-4. Implement every finding on a `fix/security-dry-review` branch (or similar)
-5. Open a PR for the fixes, wait for CI, merge
-6. Then start the next gap
+4. Run Spec Audit (Template 4) across all spec files in `specs/`
+5. Implement every finding on a `fix/<gap>-review` branch
+6. Open a PR for the fixes, wait for CI, merge
+7. Then start the next gap
 
 Template 1 (Spec Adherence) is optional post-merge but **required** before
 opening a PR for any gap implementation.
@@ -213,4 +214,92 @@ EXCESS PARAMS | DEEP NESTING | MISPLACED TYPE | MISPLACED CONSTANT
 
 List findings grouped by issue type. If no findings in a category, omit that
 category. If no findings at all, say "No findings."
+```
+
+---
+
+## Template 4 — Spec Audit
+
+**When to use**: after every gap PR merges, before starting the next gap. Run
+against all spec files in `specs/`. Paste each spec plus the relevant schema,
+router, and repository files.
+
+```
+You are performing a spec audit — a cross-check of all feature specs against
+the current implementation. Your job is diagnosis only. Do not suggest fixes.
+Do not comment on code style or architecture.
+
+## Spec files
+
+{{PASTE CONTENTS OF ALL FILES IN specs/}}
+
+## Implementation files
+
+{{PASTE:
+  - prisma/schema.prisma
+  - src/server/routers/*.ts  (all router files)
+  - src/server/repositories/*.ts  (all repository files)
+}}
+
+## Instructions
+
+For each spec file, report on the following five dimensions:
+
+### 1. Data model gaps
+Compare every field listed in the spec's Data Model section against
+prisma/schema.prisma.
+- Fields in the spec not present in the schema → MISSING FROM SCHEMA
+- Fields in the schema not documented in the spec → UNDOCUMENTED IN SPEC
+Only flag fields on models that the spec owns. Do not flag fields that belong
+to models owned by other specs.
+
+### 2. API procedure gaps
+Compare every procedure or endpoint listed in the spec against the tRPC routers
+in src/server/routers/.
+- Procedures in the spec not found in any router → MISSING PROCEDURE
+- Procedures in a router that relate to this spec's feature but are not in the
+  spec → UNDOCUMENTED PROCEDURE
+
+### 3. Decision drift
+For each resolved decision in the spec's Decisions table, check whether the
+implementation matches the stated resolution.
+- Implementation contradicts the spec decision → DECISION DRIFT (quote both)
+- Implementation adds behaviour not covered by any decision → UNRECORDED DECISION
+
+### 4. Acceptance criteria coverage
+For each numbered acceptance criterion in the spec, determine whether it is
+addressed by any code in the routers or repositories.
+- Criterion has no corresponding implementation → UNIMPLEMENTED AC
+- Criterion is partially addressed → PARTIAL AC (describe what is missing)
+
+### 5. Spec status
+- Spec has no status field → MISSING STATUS
+- Spec status is DRAFT → STALE DRAFT (should be ACCEPTED or SUPERSEDED)
+- Spec is marked ACCEPTED but has open/unresolved decisions → UNRESOLVED DECISIONS
+
+## Output format
+
+Produce one section per spec file:
+
+### `specs/<filename>.md`
+
+| Dimension | Finding | Detail |
+|-----------|---------|--------|
+| Data model | MISSING FROM SCHEMA | Field `foo` in spec not in schema |
+| Data model | UNDOCUMENTED IN SPEC | `User.bar` in schema not in spec |
+| API procedures | MISSING PROCEDURE | `changelog.unpublish` in spec, not in router |
+| Decision drift | DECISION DRIFT | Spec: X; Implemented: Y |
+| AC coverage | UNIMPLEMENTED AC | AC-3: guest users see … |
+| Spec status | STALE DRAFT | Status is DRAFT |
+
+If a spec has no findings in a dimension, omit that row. If a spec is fully
+clean, write "No findings."
+
+After all per-spec sections, produce a **Summary** table:
+
+| Spec | Data model | Procedures | Decisions | ACs | Status |
+|------|-----------|------------|-----------|-----|--------|
+| auth.md | clean | 1 missing | clean | clean | ACCEPTED |
+
+Use "clean" or a count of findings per cell.
 ```

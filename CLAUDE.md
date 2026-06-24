@@ -2,10 +2,10 @@
 
 ## Mandatory post-merge review
 
-After every gap PR merges to main, run a **Security Review** and a **DRY Review**
-(Templates 2 and 3 in `skills/reviewer.md`) against all new/modified code from
-that gap — before starting the next gap. Implement all findings on a dedicated
-fix branch, open a PR, and merge it before proceeding.
+After every gap PR merges to main, run a **Security Review**, a **DRY Review**,
+and a **Spec Audit** (Templates 2, 3, and 4 in `skills/reviewer.md`) against all
+new/modified code from that gap — before starting the next gap. Implement all
+findings on a dedicated fix branch, open a PR, and merge it before proceeding.
 
 Do not skip this step, even if the gap seemed straightforward. It is part of the
 definition of done for every gap.
@@ -34,7 +34,7 @@ Full canonical sequence is in the plan file. Short version:
 4. Prisma migration if schema changes
 5. Repository → router → page/component, each with co-located tests
 6. All 10 CI gates green before opening PR
-7. **After merge: run security + DRY review (see above)**
+7. **After merge: run security + DRY + spec audit (see above)**
 
 ## CI gates (all 10 must pass)
 
