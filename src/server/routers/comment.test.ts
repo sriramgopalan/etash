@@ -30,6 +30,9 @@ vi.mock("@/lib/redis", () => ({
     pipeline: vi.fn(),
   },
 }));
+vi.mock("@/lib/webhook", () => ({
+  dispatchWebhook: vi.fn().mockResolvedValue(undefined),
+}));
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 

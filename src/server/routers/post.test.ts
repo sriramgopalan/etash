@@ -26,6 +26,9 @@ vi.mock("@/lib/redis", () => ({
 vi.mock("@/lib/email", () => ({
   sendStatusChangeEmail: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("@/lib/webhook", () => ({
+  dispatchWebhook: vi.fn().mockResolvedValue(undefined),
+}));
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
