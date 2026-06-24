@@ -14,6 +14,18 @@ const COOKIE_NAME =
 export async function middleware(req: NextRequest) {
   const { nextUrl } = req;
 
+  // Embed routes: set frame-ancestors CSP, strip X-Frame-Options, allow without auth.
+  const isEmbedPath =
+    nextUrl.pathname.startsWith("/embed/") ||
+    nextUrl.pathname === "/api/embed-auth";
+  if (isEmbedPath) {
+    const allowedOrigins = process.env["WIDGET_ALLOWED_ORIGINS"] ?? "'none'";
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", `frame-ancestors ${allowedOrigins}`);
+    response.headers.delete("X-Frame-Options");
+    return response;
+  }
+
   const isPublicPath =
     nextUrl.pathname === "/" ||
     nextUrl.pathname.startsWith("/auth/") ||

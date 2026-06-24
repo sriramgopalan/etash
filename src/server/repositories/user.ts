@@ -227,6 +227,22 @@ export async function setNotificationPreferences(
   });
 }
 
+export async function upsertWidgetUser(
+  email: string,
+  name: string | null,
+): Promise<SafeUser & { role: string }> {
+  return prisma.user.upsert({
+    where: { email },
+    update: {},
+    create: {
+      email,
+      name,
+      emailVerified: new Date(),
+    },
+    select: { ...SAFE_USER_SELECT, role: true },
+  });
+}
+
 export async function adminDeleteUser(userId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const current = await tx.user.findUnique({

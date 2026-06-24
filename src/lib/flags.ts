@@ -42,6 +42,12 @@ const flags = {
     owner: "sriramgopalan",
     trackingIssue: "gap-6-webhooks",
   },
+  WIDGET: {
+    description: "Embeddable iframe widget with optional JWT auto-login for host app integration",
+    defaultValue: false,
+    owner: "sriramgopalan",
+    trackingIssue: "gap-7-widget",
+  },
 } as const satisfies Record<string, FlagDefinition>;
 
 type FeatureFlag = keyof typeof flags;

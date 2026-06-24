@@ -16,6 +16,10 @@ const schema = z
     IP_HASH_SECRET: z.string().default("opencan-default-salt"),
     // Maximum number of registered webhooks per instance (default 10)
     WEBHOOK_MAX: z.coerce.number().int().min(1).max(100).default(10),
+    // Optional: HS256 signing secret for widget JWT auto-login (must be ≥ 32 chars)
+    WIDGET_JWT_SECRET: z.string().min(32).optional(),
+    // Optional: space-separated origins allowed to frame embed pages (e.g. "https://app.acme.com")
+    WIDGET_ALLOWED_ORIGINS: z.string().optional(),
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace"])
       .default("info"),
