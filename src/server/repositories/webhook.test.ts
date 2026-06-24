@@ -7,7 +7,7 @@ vi.mock("@/server/db");
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-const { createWebhook, deleteWebhook, getActiveWebhooksForEvent, listWebhooks } =
+const { createWebhook, deleteWebhook, getActiveWebhooksForEvent, getWebhookForDelivery, listWebhooks } =
   await import("@/server/repositories/webhook");
 
 const WEBHOOK_ID = "cwh1234567890000";
@@ -63,9 +63,9 @@ describe("webhook repository", () => {
 
   describe("getActiveWebhooksForEvent", () => {
     it("returns only webhooks subscribed to the given event", async () => {
+      // DB filter is applied via where: { events: { has: event } }; mock simulates filtered result
       prismaMock.webhook.findMany.mockResolvedValue([
         makeRow({ events: ["post.created"] }),
-        makeRow({ id: "cwh2345678900000", events: ["comment.created"] }),
       ] as never);
       const result = await getActiveWebhooksForEvent("post.created");
       expect(result).toHaveLength(1);
@@ -73,11 +73,27 @@ describe("webhook repository", () => {
     });
 
     it("returns empty array when no webhook matches the event", async () => {
-      prismaMock.webhook.findMany.mockResolvedValue([
-        makeRow({ events: ["comment.created"] }),
-      ] as never);
+      prismaMock.webhook.findMany.mockResolvedValue([] as never);
       const result = await getActiveWebhooksForEvent("post.created");
       expect(result).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // getWebhookForDelivery
+  // ---------------------------------------------------------------------------
+
+  describe("getWebhookForDelivery", () => {
+    it("returns endpoint fields when found", async () => {
+      prismaMock.webhook.findUnique.mockResolvedValue(makeRow() as never);
+      const result = await getWebhookForDelivery(WEBHOOK_ID);
+      expect(result).toMatchObject({ id: WEBHOOK_ID, url: "https://example.com/hook" });
+    });
+
+    it("returns null when webhook does not exist", async () => {
+      prismaMock.webhook.findUnique.mockResolvedValue(null);
+      const result = await getWebhookForDelivery("missing");
+      expect(result).toBeNull();
     });
   });
 
@@ -87,6 +103,9 @@ describe("webhook repository", () => {
 
   describe("createWebhook", () => {
     it("returns the created webhook including the full secret", async () => {
+      prismaMock.$transaction.mockImplementation(
+        ((async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock)) as never),
+      );
       prismaMock.webhook.count.mockResolvedValue(0);
       prismaMock.webhook.create.mockImplementation(
         ((({ data }: { data: { secret: string } }) => Promise.resolve(makeRow({ secret: data.secret }))) as never),
@@ -97,6 +116,9 @@ describe("webhook repository", () => {
     });
 
     it("throws CONFLICT when webhook count is at WEBHOOK_MAX", async () => {
+      prismaMock.$transaction.mockImplementation(
+        ((async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock)) as never),
+      );
       prismaMock.webhook.count.mockResolvedValue(10);
       await expect(
         createWebhook({ url: "https://example.com/hook", events: ["post.created"] }),

@@ -77,11 +77,18 @@ describe("testWebhookDelivery", () => {
     expect(result).toEqual({ ok: true, status: 200 });
   });
 
-  it("returns ok:false with error message on network failure", async () => {
+  it("returns ok:false with fixed error string on network failure", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("connection refused"));
     const result = await testWebhookDelivery(WEBHOOK);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("connection refused");
+    expect(result.error).toBe("Delivery failed");
+  });
+
+  it("returns ok:false with fixed error string for private IP URL", async () => {
+    const result = await testWebhookDelivery({ ...WEBHOOK, url: "https://192.168.1.1/hook" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("Delivery failed");
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("returns ok:false with status when server returns non-2xx", async () => {

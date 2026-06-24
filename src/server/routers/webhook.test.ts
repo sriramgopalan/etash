@@ -75,6 +75,9 @@ describe("webhookRouter", () => {
     });
 
     it("creates webhook and returns full secret", async () => {
+      prismaMock.$transaction.mockImplementation(
+        ((async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock)) as never),
+      );
       prismaMock.webhook.count.mockResolvedValue(0);
       prismaMock.webhook.create.mockImplementation(
         ((({ data }: { data: { secret: string } }) => Promise.resolve(makeRow({ secret: data.secret }))) as never),
@@ -89,6 +92,9 @@ describe("webhookRouter", () => {
     });
 
     it("throws CONFLICT when at webhook limit", async () => {
+      prismaMock.$transaction.mockImplementation(
+        ((async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock)) as never),
+      );
       prismaMock.webhook.count.mockResolvedValue(10);
       const caller = createCaller(createAdminContext(ADMIN_ID));
       await expect(
@@ -100,6 +106,13 @@ describe("webhookRouter", () => {
       const caller = createCaller(createAdminContext(ADMIN_ID));
       await expect(
         caller.create({ url: "not-a-url", events: ["post.created"] }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("rejects non-HTTPS URL", async () => {
+      const caller = createCaller(createAdminContext(ADMIN_ID));
+      await expect(
+        caller.create({ url: "http://example.com/hook", events: ["post.created"] }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 

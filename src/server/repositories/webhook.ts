@@ -3,7 +3,8 @@ import { randomBytes } from "crypto";
 import { env } from "@/lib/env";
 import { AppError } from "@/lib/errors";
 import { prisma } from "@/server/db";
-import type { WebhookCreated, WebhookEvent, WebhookListItem } from "@/types/webhook";
+import type { WebhookCreated, WebhookEndpoint, WebhookEvent, WebhookListItem } from "@/types/webhook";
+import { WEBHOOK_EVENTS } from "@/types/webhook";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,7 +22,7 @@ function toListItem(row: {
     id: row.id,
     url: row.url,
     secretPreview: row.secret.slice(-4),
-    events: row.events as WebhookEvent[],
+    events: row.events.filter((e): e is WebhookEvent => (WEBHOOK_EVENTS as string[]).includes(e)),
     isActive: row.isActive,
     createdAt: row.createdAt,
   };
@@ -38,36 +39,44 @@ export async function listWebhooks(): Promise<WebhookListItem[]> {
   return rows.map(toListItem);
 }
 
-export async function getActiveWebhooksForEvent(event: WebhookEvent): Promise<{ id: string; url: string; secret: string }[]> {
+export async function getActiveWebhooksForEvent(event: WebhookEvent): Promise<WebhookEndpoint[]> {
   const rows = await prisma.webhook.findMany({
-    where: { isActive: true },
-    select: { id: true, url: true, secret: true, events: true },
+    where: { isActive: true, events: { has: event } },
+    select: { id: true, url: true, secret: true },
   });
-  return rows.filter((r) => r.events.includes(event));
+  return rows;
+}
+
+export async function getWebhookForDelivery(id: string): Promise<WebhookEndpoint | null> {
+  return prisma.webhook.findUnique({
+    where: { id },
+    select: { id: true, url: true, secret: true },
+  });
 }
 
 export async function createWebhook(input: {
   url: string;
   events: WebhookEvent[];
 }): Promise<WebhookCreated> {
-  const count = await prisma.webhook.count();
-  if (count >= env.WEBHOOK_MAX) {
-    throw new AppError("CONFLICT", `Maximum of ${env.WEBHOOK_MAX} webhooks allowed.`);
-  }
-
   const secret = randomBytes(32).toString("hex");
-  const row = await prisma.webhook.create({
-    data: {
-      url: input.url,
-      secret,
-      events: input.events,
-    },
-  });
 
-  return {
-    ...toListItem(row),
-    secret,
-  };
+  return prisma.$transaction(async (tx) => {
+    const count = await tx.webhook.count();
+    if (count >= env.WEBHOOK_MAX) {
+      throw new AppError("CONFLICT", `Maximum of ${env.WEBHOOK_MAX} webhooks allowed.`);
+    }
+    const row = await tx.webhook.create({
+      data: {
+        url: input.url,
+        secret,
+        events: input.events,
+      },
+    });
+    return {
+      ...toListItem(row),
+      secret,
+    };
+  });
 }
 
 export async function deleteWebhook(id: string): Promise<{ id: string }> {
