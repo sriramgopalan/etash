@@ -6,7 +6,8 @@
     ".next/",
     "coverage/",
     "playwright-report/",
-    "node_modules/"
+    "node_modules/",
+    "public/"
   ],
   "extends": [
     "next/core-web-vitals",
