@@ -7,17 +7,10 @@ vi.mock("@/server/db");
 
 const prismaMock = prisma as unknown as DeepMockProxy<PrismaClient>;
 
-const {
-  getWorkspaceStats,
-  listAdminUsers,
-  listPendingPosts,
-  bucketByDay,
-  getActivityTimeseries,
-  getPostStatusBreakdown,
-  getTopPosts,
-  getTopBoards,
-  getRecentUsers,
-} = await import("@/server/repositories/admin");
+const admin = await import("@/server/repositories/admin");
+const { getWorkspaceStats, listAdminUsers, listPendingPosts } = admin;
+const { bucketByDay, getActivityTimeseries, getPostStatusBreakdown } = admin;
+const { getTopPosts, getTopBoards, getRecentUsers } = admin;
 
 describe("admin repository", () => {
   afterEach(() => {
@@ -110,10 +103,12 @@ describe("admin repository", () => {
 
   describe("getPostStatusBreakdown", () => {
     it("maps groupBy rows to status/count items", async () => {
-      prismaMock.post.groupBy.mockResolvedValue([
+      // groupBy is an overloaded signature; the deep mock does not surface
+      // mockResolvedValue on its type, so cast to a plain mock to set the return.
+      vi.mocked(prismaMock.post.groupBy as unknown as () => Promise<unknown>).mockResolvedValue([
         { status: "OPEN", _count: { _all: 4 } },
         { status: "SHIPPED", _count: { _all: 2 } },
-      ] as never);
+      ]);
 
       const items = await getPostStatusBreakdown();
 

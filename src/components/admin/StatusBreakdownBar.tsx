@@ -1,15 +1,6 @@
+import { STATUS_LABELS } from "@/lib/post-status";
 import type { StatusBreakdownItem } from "@/types/admin";
 import type { PostStatus } from "@/types/post";
-
-const STATUS_LABELS: Record<PostStatus, string> = {
-  PENDING: "Pending",
-  OPEN: "Open",
-  UNDER_REVIEW: "Under Review",
-  PLANNED: "Planned",
-  IN_PROGRESS: "In Progress",
-  SHIPPED: "Shipped",
-  CLOSED: "Closed",
-};
 
 // Saturated fills from the same hue families as StatusBadge (src/components/posts/StatusBadge.tsx).
 const STATUS_FILLS: Record<PostStatus, string> = {

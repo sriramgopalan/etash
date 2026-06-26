@@ -1,14 +1,5 @@
+import { STATUS_LABELS } from "@/lib/post-status";
 import type { PostStatus } from "@/types/post";
-
-const STATUS_LABELS: Record<PostStatus, string> = {
-  PENDING: "Pending",
-  OPEN: "Open",
-  UNDER_REVIEW: "Under Review",
-  PLANNED: "Planned",
-  IN_PROGRESS: "In Progress",
-  SHIPPED: "Shipped",
-  CLOSED: "Closed",
-};
 
 const STATUS_CLASSES: Record<PostStatus, string> = {
   PENDING: "bg-gray-100 text-gray-600",
