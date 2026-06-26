@@ -38,6 +38,12 @@ export const adminRouter = createTRPCRouter({
         totalUsers: z.number(),
         newPostsLast30Days: z.number(),
         newUsersLast30Days: z.number(),
+        newCommentsLast30Days: z.number(),
+        newVotesLast30Days: z.number(),
+        newPostsPrev30Days: z.number(),
+        newUsersPrev30Days: z.number(),
+        newCommentsPrev30Days: z.number(),
+        newVotesPrev30Days: z.number(),
       }),
     )
     .query(async () => {
