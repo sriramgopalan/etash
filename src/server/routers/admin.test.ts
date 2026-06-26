@@ -58,6 +58,7 @@ describe("adminRouter", () => {
       prismaMock.post.aggregate.mockResolvedValue({ _sum: { voteCount: 10 } } as never);
       prismaMock.comment.count.mockResolvedValue(15);
       prismaMock.user.count.mockResolvedValue(8);
+      prismaMock.vote.count.mockResolvedValue(0);
 
       const caller = createCaller(createAdminContext(ADMIN_ID));
       const stats = await caller.getStats();
